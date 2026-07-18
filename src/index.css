@@ -320,3 +320,141 @@ body {
   font-size: 12px;
   text-align: center;
 }
+
+/* --- Onglets Tableau de bord / Backtest --- */
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.tab-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.tab-buttons button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab-buttons button.active {
+  color: var(--bg);
+  background: var(--text);
+  border-color: var(--text);
+}
+
+/* --- Filtre timeframe supérieur --- */
+.filter-note {
+  background: rgba(212, 162, 76, 0.1);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.grid-single {
+  grid-template-columns: 1fr;
+}
+
+/* --- Panneau backtest --- */
+.backtest-panel {
+  grid-column: 1 / -1;
+}
+
+.backtest-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-end;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+}
+
+.backtest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-backtest-btn {
+  background: var(--gold);
+  border: none;
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.run-backtest-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.backtest-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.chart-wrap {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.chart-caption {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.disclaimer {
+  color: var(--muted);
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .header-controls {
+    align-items: flex-start;
+  }
+}

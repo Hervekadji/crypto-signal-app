@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useCryptoSignals } from './hooks/useCryptoSignals.js';
+import BacktestPanel from './components/BacktestPanel.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
   { value: '5m', label: '5 min' },
   { value: '15m', label: '15 min' },
-  { value: '1h', label: '1 h' }
+  { value: '1h', label: '1 h' },
+  { value: '4h', label: '4 h' }
 ];
 
 function formatPrice(p) {
@@ -98,6 +100,12 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
             <span className="signal-score">score {result.score > 0 ? `+${result.score}` : result.score}</span>
           </div>
 
+          {result.blockedByHigherTimeframe && (
+            <div className="filter-note">
+              Signal {result.rawSignal} bloqué — tendance {result.higherTrend} sur le timeframe {result.higherTimeframe}
+            </div>
+          )}
+
           <div className="indicators">
             <IndicatorRow
               label="SMA 9 / 21"
@@ -110,6 +118,20 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
               value={result.details.histogram.toFixed(4)}
               vote={result.votes.macd}
             />
+            {result.details.volume && (
+              <IndicatorRow
+                label="Volume"
+                value={`x${result.details.volume.ratio.toFixed(2)} moy.`}
+                vote={result.votes.volume}
+              />
+            )}
+            {result.details.pivot && (
+              <IndicatorRow
+                label="Pivot (PP)"
+                value={result.details.pivot.pp.toFixed(2)}
+                vote={result.votes.pivot}
+              />
+            )}
           </div>
         </>
       )}
@@ -135,14 +157,17 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
 
 export default function App() {
   const [interval, setInterval_] = useState('5m');
+  const [tab, setTab] = useState('live'); // 'live' | 'backtest'
 
   // On instancie un hook indépendant par paire pour le bandeau défilant du haut.
   const btc = useCryptoSignals('BTCUSDT', interval);
   const eth = useCryptoSignals('ETHUSDT', interval);
+  const gold = useCryptoSignals('PAXGUSDT', interval);
 
   const tickerFeeds = [
     { label: 'BTC/USDT', price: btc.price, signal: btc.result?.signal },
-    { label: 'ETH/USDT', price: eth.price, signal: eth.result?.signal }
+    { label: 'ETH/USDT', price: eth.price, signal: eth.result?.signal },
+    { label: 'Or (PAXG)', price: gold.price, signal: gold.result?.signal }
   ];
 
   return (
@@ -154,30 +179,51 @@ export default function App() {
           <div className="eyebrow">Signal Board</div>
           <h1>Alertes d'achat / vente</h1>
           <p className="subtitle">
-            Confluence SMA 9/21 · RSI 14 · MACD 12/26/9 — données publiques Binance
+            Confluence SMA 9/21 · RSI 14 · MACD 12/26/9 · Volume · Pivots + filtre timeframe supérieur —
+            données publiques Binance
           </p>
         </div>
 
-        <div className="interval-select">
-          <span className="eyebrow">Intervalle</span>
-          <div className="interval-buttons">
-            {INTERVALS.map((it) => (
-              <button
-                key={it.value}
-                className={it.value === interval ? 'active' : ''}
-                onClick={() => setInterval_(it.value)}
-              >
-                {it.label}
-              </button>
-            ))}
+        <div className="header-controls">
+          <div className="tab-buttons">
+            <button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>
+              Tableau de bord
+            </button>
+            <button className={tab === 'backtest' ? 'active' : ''} onClick={() => setTab('backtest')}>
+              Backtest
+            </button>
           </div>
+
+          {tab === 'live' && (
+            <div className="interval-select">
+              <span className="eyebrow">Intervalle</span>
+              <div className="interval-buttons">
+                {INTERVALS.map((it) => (
+                  <button
+                    key={it.value}
+                    className={it.value === interval ? 'active' : ''}
+                    onClick={() => setInterval_(it.value)}
+                  >
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="grid">
-        <PairPanel label="BTC/USDT" {...btc} />
-        <PairPanel label="ETH/USDT" {...eth} />
-      </main>
+      {tab === 'live' ? (
+        <main className="grid">
+          <PairPanel label="BTC/USDT" {...btc} />
+          <PairPanel label="ETH/USDT" {...eth} />
+          <PairPanel label="Or (PAXG/USDT)" {...gold} />
+        </main>
+      ) : (
+        <main className="grid grid-single">
+          <BacktestPanel />
+        </main>
+      )}
 
       <footer className="app-footer">
         Signaux à titre indicatif — ne constitue pas un conseil financier. Ce script observe

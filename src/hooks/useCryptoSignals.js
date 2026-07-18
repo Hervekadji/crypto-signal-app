@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { computeSignal } from '../utils/indicators.js';
+import { HIGHER_TIMEFRAME_MAP, higherTimeframeTrend, applyHigherTimeframeFilter } from '../utils/higherTimeframe.js';
 
 const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
 
 /**
  * Récupère les bougies pour une paire donnée, calcule le signal de
- * confluence, et journalise une alerte à chaque CHANGEMENT de signal
- * (pas à chaque poll, pour éviter le bruit).
+ * confluence à 5 votes (SMA, RSI, MACD, Volume, Pivots), applique le filtre
+ * de tendance du timeframe supérieur, et journalise une alerte à chaque
+ * CHANGEMENT de signal (pas à chaque poll, pour éviter le bruit).
  *
  * @param {string} symbol ex: "BTCUSDT"
  * @param {string} interval ex: "5m"
@@ -23,18 +25,49 @@ export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000) {
   const fetchAndCompute = useCallback(async () => {
     try {
       setStatus('loading');
-      const url = `${BINANCE_KLINES}?symbol=${symbol}&interval=${interval}&limit=150`;
-      const res = await fetch(url);
+
+      const higherInterval = HIGHER_TIMEFRAME_MAP[interval] || interval;
+
+      // Deux requêtes en parallèle : le timeframe courant (signal complet) et
+      // le timeframe supérieur (juste pour le filtre de tendance).
+      const [res, higherRes] = await Promise.all([
+        fetch(`${BINANCE_KLINES}?symbol=${symbol}&interval=${interval}&limit=150`),
+        fetch(`${BINANCE_KLINES}?symbol=${symbol}&interval=${higherInterval}&limit=50`)
+      ]);
       if (!res.ok) throw new Error(`Binance a répondu ${res.status}`);
       const raw = await res.json();
 
       // Format kline Binance : [openTime, open, high, low, close, volume, ...]
       const closes = raw.map((k) => parseFloat(k[4]));
+      const highs = raw.map((k) => parseFloat(k[2]));
+      const lows = raw.map((k) => parseFloat(k[3]));
+      const volumes = raw.map((k) => parseFloat(k[5]));
       const lastClose = closes[closes.length - 1];
 
       setPrice(lastClose);
 
-      const signalResult = computeSignal(closes);
+      let higherTrend = null;
+      if (higherRes.ok) {
+        const higherRaw = await higherRes.json();
+        const higherCloses = higherRaw.map((k) => parseFloat(k[4]));
+        higherTrend = higherTimeframeTrend(higherCloses);
+      }
+
+      const rawSignalResult = computeSignal(closes, volumes, highs, lows);
+      let signalResult = rawSignalResult;
+
+      if (rawSignalResult) {
+        const filtered = applyHigherTimeframeFilter(rawSignalResult.signal, higherTrend);
+        signalResult = {
+          ...rawSignalResult,
+          signal: filtered.signal,
+          blockedByHigherTimeframe: filtered.blocked,
+          rawSignal: rawSignalResult.signal,
+          higherTimeframe: higherInterval,
+          higherTrend
+        };
+      }
+
       setResult(signalResult);
       setStatus('ok');
       setErrorMessage(null);
