@@ -1,0 +1,188 @@
+import React, { useState } from 'react';
+import { useCryptoSignals } from './hooks/useCryptoSignals.js';
+
+const INTERVALS = [
+  { value: '1m', label: '1 min' },
+  { value: '5m', label: '5 min' },
+  { value: '15m', label: '15 min' },
+  { value: '1h', label: '1 h' }
+];
+
+function formatPrice(p) {
+  if (p === null || p === undefined) return '—';
+  return p.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatTime(d) {
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function signalColor(signal) {
+  if (signal === 'ACHAT') return 'var(--buy)';
+  if (signal === 'VENTE') return 'var(--sell)';
+  return 'var(--muted)';
+}
+
+function TickerTape({ feeds }) {
+  // Bande défilante façon panneau de bourse — l'élément signature de l'app.
+  const items = [...feeds, ...feeds]; // dupliqué pour boucler visuellement
+  return (
+    <div className="ticker-tape">
+      <div className="ticker-track">
+        {items.map((f, i) => (
+          <span className="ticker-item" key={i}>
+            <span className="ticker-symbol">{f.label}</span>
+            <span className="ticker-price">{formatPrice(f.price)}</span>
+            <span className="ticker-signal" style={{ color: signalColor(f.signal) }}>
+              {f.signal || '···'}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IndicatorRow({ label, value, vote }) {
+  return (
+    <div className="indicator-row">
+      <span className="indicator-label">{label}</span>
+      <span className="indicator-value">{value}</span>
+      <span
+        className="indicator-vote"
+        style={{
+          color: vote?.includes('haussier')
+            ? 'var(--buy)'
+            : vote?.includes('baissier')
+            ? 'var(--sell)'
+            : 'var(--muted)'
+        }}
+      >
+        {vote}
+      </span>
+    </div>
+  );
+}
+
+function PairPanel({ label, price, result, alerts, status, errorMessage, refresh }) {
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <div>
+          <div className="eyebrow">Paire</div>
+          <h2>{label}</h2>
+        </div>
+        <button className="refresh-btn" onClick={refresh} title="Rafraîchir maintenant">
+          ↻
+        </button>
+      </div>
+
+      <div className="price-block">
+        <span className="price-value">{formatPrice(price)}</span>
+        <span className="price-currency">USDT</span>
+      </div>
+
+      {status === 'error' && <div className="error-banner">Erreur : {errorMessage}</div>}
+      {status === 'loading' && !result && <div className="muted-note">Chargement des données…</div>}
+
+      {result && (
+        <>
+          <div
+            className="signal-badge"
+            style={{
+              borderColor: signalColor(result.signal),
+              color: signalColor(result.signal)
+            }}
+          >
+            {result.signal}
+            <span className="signal-score">score {result.score > 0 ? `+${result.score}` : result.score}</span>
+          </div>
+
+          <div className="indicators">
+            <IndicatorRow
+              label="SMA 9 / 21"
+              value={`${result.details.sma9.toFixed(2)} / ${result.details.sma21.toFixed(2)}`}
+              vote={result.votes.sma}
+            />
+            <IndicatorRow label="RSI (14)" value={result.details.rsi.toFixed(1)} vote={result.votes.rsi} />
+            <IndicatorRow
+              label="MACD hist."
+              value={result.details.histogram.toFixed(4)}
+              vote={result.votes.macd}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="alerts-log">
+        <div className="eyebrow">Journal des alertes</div>
+        {alerts.length === 0 && <div className="muted-note">Aucun changement de signal pour l'instant.</div>}
+        <ul>
+          {alerts.map((a) => (
+            <li key={a.id}>
+              <span className="alert-time">{formatTime(a.time)}</span>
+              <span className="alert-signal" style={{ color: signalColor(a.signal) }}>
+                {a.signal}
+              </span>
+              <span className="alert-price">{formatPrice(a.price)} USDT</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [interval, setInterval_] = useState('5m');
+
+  // On instancie un hook indépendant par paire pour le bandeau défilant du haut.
+  const btc = useCryptoSignals('BTCUSDT', interval);
+  const eth = useCryptoSignals('ETHUSDT', interval);
+
+  const tickerFeeds = [
+    { label: 'BTC/USDT', price: btc.price, signal: btc.result?.signal },
+    { label: 'ETH/USDT', price: eth.price, signal: eth.result?.signal }
+  ];
+
+  return (
+    <div className="app">
+      <TickerTape feeds={tickerFeeds} />
+
+      <header className="app-header">
+        <div>
+          <div className="eyebrow">Signal Board</div>
+          <h1>Alertes d'achat / vente</h1>
+          <p className="subtitle">
+            Confluence SMA 9/21 · RSI 14 · MACD 12/26/9 — données publiques Binance
+          </p>
+        </div>
+
+        <div className="interval-select">
+          <span className="eyebrow">Intervalle</span>
+          <div className="interval-buttons">
+            {INTERVALS.map((it) => (
+              <button
+                key={it.value}
+                className={it.value === interval ? 'active' : ''}
+                onClick={() => setInterval_(it.value)}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <main className="grid">
+        <PairPanel label="BTC/USDT" {...btc} />
+        <PairPanel label="ETH/USDT" {...eth} />
+      </main>
+
+      <footer className="app-footer">
+        Signaux à titre indicatif — ne constitue pas un conseil financier. Ce script observe
+        le marché, il n'exécute aucun ordre.
+      </footer>
+    </div>
+  );
+}
