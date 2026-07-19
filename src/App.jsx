@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCryptoSignals } from './hooks/useCryptoSignals.js';
 import BacktestPanel from './components/BacktestPanel.jsx';
 import NewsPanel from './components/NewsPanel.jsx';
+import NotificationToggle from './components/NotificationToggle.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
@@ -153,39 +154,6 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
         </ul>
       </div>
     </div>
-  );
-}
-
-function NotificationToggle({ enabled, onToggle }) {
-  const [permission, setPermission] = useState(
-    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
-  );
-
-  const handleClick = async () => {
-    if (permission === 'unsupported') return;
-    if (permission === 'granted') {
-      onToggle(!enabled);
-      return;
-    }
-    const result = await Notification.requestPermission();
-    setPermission(result);
-    if (result === 'granted') onToggle(true);
-  };
-
-  let label = 'Activer les notifications';
-  if (permission === 'unsupported') label = 'Notifications non supportées';
-  else if (permission === 'denied') label = 'Notifications bloquées par le navigateur';
-  else if (permission === 'granted') label = enabled ? 'Notifications activées ✓' : 'Notifications en pause';
-
-  return (
-    <button
-      className="notif-btn"
-      onClick={handleClick}
-      disabled={permission === 'unsupported' || permission === 'denied'}
-      data-active={permission === 'granted' && enabled}
-    >
-      {label}
-    </button>
   );
 }
 

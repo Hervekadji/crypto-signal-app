@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { classifyNews } from '../utils/newsKeywords.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { classifyNews, NEWS_CATEGORIES } from '../utils/newsKeywords.js';
 
 // Conversion RSS → JSON gratuite, pensée pour un usage côté navigateur (CORS ouvert).
 const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url=';
@@ -16,11 +16,17 @@ const FEEDS = [
  *
  * @param {number} pollMs intervalle de rafraîchissement (les news bougent
  *   moins vite que les prix, donc un intervalle plus long convient)
+ * @param {boolean} notifsEnabled si true, notifie le navigateur à l'apparition
+ *   d'une NOUVELLE actualité correspondant à au moins une catégorie détectée
  */
-export function useMarketNews(pollMs = 5 * 60 * 1000) {
+export function useMarketNews(pollMs = 5 * 60 * 1000, notifsEnabled = false) {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState('idle'); // idle | loading | ok | error
   const [errorMessage, setErrorMessage] = useState(null);
+  const seenIdsRef = useRef(new Set());
+  const isFirstFetchRef = useRef(true);
+  const notifsEnabledRef = useRef(notifsEnabled);
+  notifsEnabledRef.current = notifsEnabled;
 
   const fetchNews = useCallback(async () => {
     try {
@@ -54,6 +60,32 @@ export function useMarketNews(pollMs = 5 * 60 * 1000) {
       if (allFailed) {
         throw new Error('Aucun flux d\'actualités accessible pour le moment.');
       }
+
+      // Notification uniquement sur des actualités jamais vues, avec au moins
+      // une catégorie détectée, et jamais lors du tout premier chargement
+      // (sinon on notifierait tout l'historique existant d'un coup).
+      if (!isFirstFetchRef.current && notifsEnabledRef.current) {
+        const freshImpactful = merged.filter(
+          (item) => item.categories.length > 0 && !seenIdsRef.current.has(item.id)
+        );
+
+        if (
+          freshImpactful.length > 0 &&
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          Notification.permission === 'granted'
+        ) {
+          const first = freshImpactful[0];
+          const categoryLabels = first.categories.map((c) => NEWS_CATEGORIES[c].label).join(', ');
+          new Notification(`Actu marché — ${categoryLabels}`, {
+            body: first.title,
+            tag: `news-${first.id}`
+          });
+        }
+      }
+
+      merged.forEach((item) => seenIdsRef.current.add(item.id));
+      isFirstFetchRef.current = false;
 
       setItems(merged);
       setStatus('ok');

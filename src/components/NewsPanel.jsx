@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useMarketNews } from '../hooks/useMarketNews.js';
 import { NEWS_CATEGORIES } from '../utils/newsKeywords.js';
+import NotificationToggle from './NotificationToggle.jsx';
 
 function formatTime(d) {
   return d.toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function NewsPanel() {
-  const { items, status, errorMessage, refresh } = useMarketNews();
+  const [notifsEnabled, setNotifsEnabled] = useState(false);
+  const { items, status, errorMessage, refresh } = useMarketNews(5 * 60 * 1000, notifsEnabled);
   const [onlyImpact, setOnlyImpact] = useState(false);
 
   const visibleItems = onlyImpact ? items.filter((n) => n.categories.length > 0) : items;
@@ -24,9 +26,20 @@ export default function NewsPanel() {
         </button>
       </div>
 
+      <NotificationToggle
+        enabled={notifsEnabled}
+        onToggle={setNotifsEnabled}
+        labelOn="Alertes actualités activées ✓"
+        labelOff="Alerter sur les actualités à impact"
+      />
+
       <p className="muted-note">
         Détection automatique par mots-clés (régulation, ETF, sécurité, macroéconomie…) — pas une
         analyse de sentiment par IA. Vérifie toujours la source avant de tirer une conclusion.
+      </p>
+      <p className="muted-note news-color-note">
+        Les couleurs des badges identifient uniquement la <strong>catégorie</strong> de l'actualité —
+        elles ne signifient pas "haussier" ou "baissier".
       </p>
 
       <label className="news-filter-toggle">
