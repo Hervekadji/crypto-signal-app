@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCryptoSignals } from './hooks/useCryptoSignals.js';
 import BacktestPanel from './components/BacktestPanel.jsx';
+import NewsPanel from './components/NewsPanel.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
@@ -155,14 +156,48 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
   );
 }
 
+function NotificationToggle({ enabled, onToggle }) {
+  const [permission, setPermission] = useState(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  );
+
+  const handleClick = async () => {
+    if (permission === 'unsupported') return;
+    if (permission === 'granted') {
+      onToggle(!enabled);
+      return;
+    }
+    const result = await Notification.requestPermission();
+    setPermission(result);
+    if (result === 'granted') onToggle(true);
+  };
+
+  let label = 'Activer les notifications';
+  if (permission === 'unsupported') label = 'Notifications non supportées';
+  else if (permission === 'denied') label = 'Notifications bloquées par le navigateur';
+  else if (permission === 'granted') label = enabled ? 'Notifications activées ✓' : 'Notifications en pause';
+
+  return (
+    <button
+      className="notif-btn"
+      onClick={handleClick}
+      disabled={permission === 'unsupported' || permission === 'denied'}
+      data-active={permission === 'granted' && enabled}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function App() {
   const [interval, setInterval_] = useState('5m');
   const [tab, setTab] = useState('live'); // 'live' | 'backtest'
+  const [notifsEnabled, setNotifsEnabled] = useState(false);
 
   // On instancie un hook indépendant par paire pour le bandeau défilant du haut.
-  const btc = useCryptoSignals('BTCUSDT', interval);
-  const eth = useCryptoSignals('ETHUSDT', interval);
-  const gold = useCryptoSignals('PAXGUSDT', interval);
+  const btc = useCryptoSignals('BTCUSDT', interval, 30000, notifsEnabled);
+  const eth = useCryptoSignals('ETHUSDT', interval, 30000, notifsEnabled);
+  const gold = useCryptoSignals('PAXGUSDT', interval, 30000, notifsEnabled);
 
   const tickerFeeds = [
     { label: 'BTC/USDT', price: btc.price, signal: btc.result?.signal },
@@ -192,6 +227,9 @@ export default function App() {
             <button className={tab === 'backtest' ? 'active' : ''} onClick={() => setTab('backtest')}>
               Backtest
             </button>
+            <button className={tab === 'news' ? 'active' : ''} onClick={() => setTab('news')}>
+              Actualités
+            </button>
           </div>
 
           {tab === 'live' && (
@@ -210,6 +248,8 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {tab === 'live' && <NotificationToggle enabled={notifsEnabled} onToggle={setNotifsEnabled} />}
         </div>
       </header>
 
@@ -219,9 +259,13 @@ export default function App() {
           <PairPanel label="ETH/USDT" {...eth} />
           <PairPanel label="Or (PAXG/USDT)" {...gold} />
         </main>
-      ) : (
+      ) : tab === 'backtest' ? (
         <main className="grid grid-single">
           <BacktestPanel />
+        </main>
+      ) : (
+        <main className="grid grid-single">
+          <NewsPanel />
         </main>
       )}
 

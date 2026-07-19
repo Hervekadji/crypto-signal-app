@@ -13,14 +13,18 @@ const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
  * @param {string} symbol ex: "BTCUSDT"
  * @param {string} interval ex: "5m"
  * @param {number} pollMs intervalle de rafraîchissement en ms
+ * @param {boolean} notifsEnabled si true, déclenche une notification navigateur
+ *   à chaque nouveau signal ACHAT/VENTE (pas sur un retour à NEUTRE)
  */
-export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000) {
+export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000, notifsEnabled = false) {
   const [price, setPrice] = useState(null);
   const [result, setResult] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState('idle'); // idle | loading | ok | error
   const [errorMessage, setErrorMessage] = useState(null);
   const lastSignalRef = useRef('NEUTRE');
+  const notifsEnabledRef = useRef(notifsEnabled);
+  notifsEnabledRef.current = notifsEnabled;
 
   const fetchAndCompute = useCallback(async () => {
     try {
@@ -85,6 +89,25 @@ export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000) {
           },
           ...prev
         ].slice(0, 50));
+
+        // Notification navigateur, seulement pour un vrai signal ACHAT/VENTE
+        // (pas pour le retour à NEUTRE, pour ne pas spammer)
+        if (
+          notifsEnabledRef.current &&
+          signalResult.signal !== 'NEUTRE' &&
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          Notification.permission === 'granted'
+        ) {
+          new Notification(`${signalResult.signal} — ${symbol}`, {
+            body: `Prix : ${lastClose.toLocaleString('fr-FR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })} USDT · score ${signalResult.score}`,
+            tag: symbol
+          });
+        }
+
         lastSignalRef.current = signalResult.signal;
       }
     } catch (err) {
