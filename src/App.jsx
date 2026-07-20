@@ -3,6 +3,7 @@ import { useCryptoSignals } from './hooks/useCryptoSignals.js';
 import BacktestPanel from './components/BacktestPanel.jsx';
 import NewsPanel from './components/NewsPanel.jsx';
 import NotificationToggle from './components/NotificationToggle.jsx';
+import ScalpTab from './components/ScalpTab.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
@@ -10,6 +11,12 @@ const INTERVALS = [
   { value: '15m', label: '15 min' },
   { value: '1h', label: '1 h' },
   { value: '4h', label: '4 h' }
+];
+
+const SCALP_INTERVALS = [
+  { value: '1m', label: '1 min' },
+  { value: '5m', label: '5 min' },
+  { value: '15m', label: '15 min' }
 ];
 
 function formatPrice(p) {
@@ -159,8 +166,10 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
 
 export default function App() {
   const [interval, setInterval_] = useState('5m');
-  const [tab, setTab] = useState('live'); // 'live' | 'backtest'
+  const [tab, setTab] = useState('live'); // 'live' | 'backtest' | 'news' | 'scalp'
   const [notifsEnabled, setNotifsEnabled] = useState(false);
+  const [scalpInterval, setScalpInterval] = useState('5m');
+  const [scalpNotifsEnabled, setScalpNotifsEnabled] = useState(false);
 
   // On instancie un hook indépendant par paire pour le bandeau défilant du haut.
   const btc = useCryptoSignals('BTCUSDT', interval, 30000, notifsEnabled);
@@ -198,6 +207,9 @@ export default function App() {
             <button className={tab === 'news' ? 'active' : ''} onClick={() => setTab('news')}>
               Actualités
             </button>
+            <button className={tab === 'scalp' ? 'active' : ''} onClick={() => setTab('scalp')}>
+              Scalping
+            </button>
           </div>
 
           {tab === 'live' && (
@@ -218,6 +230,32 @@ export default function App() {
           )}
 
           {tab === 'live' && <NotificationToggle enabled={notifsEnabled} onToggle={setNotifsEnabled} />}
+
+          {tab === 'scalp' && (
+            <div className="interval-select">
+              <span className="eyebrow">Intervalle</span>
+              <div className="interval-buttons">
+                {SCALP_INTERVALS.map((it) => (
+                  <button
+                    key={it.value}
+                    className={it.value === scalpInterval ? 'active' : ''}
+                    onClick={() => setScalpInterval(it.value)}
+                  >
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === 'scalp' && (
+            <NotificationToggle
+              enabled={scalpNotifsEnabled}
+              onToggle={setScalpNotifsEnabled}
+              labelOn="Alertes scalping activées ✓"
+              labelOff="Alerter sur les retournements"
+            />
+          )}
         </div>
       </header>
 
@@ -231,10 +269,12 @@ export default function App() {
         <main className="grid grid-single">
           <BacktestPanel />
         </main>
-      ) : (
+      ) : tab === 'news' ? (
         <main className="grid grid-single">
           <NewsPanel />
         </main>
+      ) : (
+        <ScalpTab interval={scalpInterval} notifsEnabled={scalpNotifsEnabled} />
       )}
 
       <footer className="app-footer">

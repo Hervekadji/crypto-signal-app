@@ -450,6 +450,13 @@ body {
   border: 1px solid;
 }
 
+.climax-reason {
+  color: var(--muted);
+  font-size: 12px;
+  margin: -6px 0 0;
+  line-height: 1.4;
+}
+
 /* --- Filtre timeframe supérieur --- */
 .filter-note {
   background: rgba(212, 162, 76, 0.1);
