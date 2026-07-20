@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { runBacktest } from '../utils/backtest.js';
-
-const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
+import { runBacktest, runVolumeClimaxBacktest } from '../utils/backtest.js';
+import { fetchHistoricalKlines } from '../utils/binanceHistory.js';
 
 const BACKTEST_PAIRS = [
   { symbol: 'BTCUSDT', label: 'BTC/USDT' },
@@ -10,13 +9,28 @@ const BACKTEST_PAIRS = [
   { symbol: 'PAXGUSDT', label: 'Or (PAXG/USDT)' }
 ];
 
-// Limite max d'une requête Binance : 1000 bougies.
-// Avec 4h ça couvre ~166 jours, avec 1d ça couvre ~1000 jours (~2.7 ans).
-const BACKTEST_INTERVALS = [
-  { value: '1h', label: '1 h (~41 jours)' },
-  { value: '4h', label: '4 h (~166 jours)' },
-  { value: '1d', label: '1 jour (~2,7 ans)' }
+const STRATEGIES = [
+  { value: 'confluence', label: 'Confluence (tendance)' },
+  { value: 'climax', label: 'Retournement volume (scalping)' }
 ];
+
+// `requests` = nombre de requêtes de 1000 bougies enchaînées (pagination)
+// pour dépasser la limite Binance sur les petits timeframes.
+const BACKTEST_INTERVALS = {
+  confluence: [
+    { value: '1m', label: '1 min (~7 jours)', requests: 10 },
+    { value: '5m', label: '5 min (~35 jours)', requests: 10 },
+    { value: '15m', label: '15 min (~104 jours)', requests: 10 },
+    { value: '1h', label: '1 h (~41 jours)', requests: 1 },
+    { value: '4h', label: '4 h (~166 jours)', requests: 1 },
+    { value: '1d', label: '1 jour (~2,7 ans)', requests: 1 }
+  ],
+  climax: [
+    { value: '1m', label: '1 min (~16 h)', requests: 1 },
+    { value: '5m', label: '5 min (~3,5 jours)', requests: 1 },
+    { value: '15m', label: '15 min (~10 jours)', requests: 1 }
+  ]
+};
 
 function formatPct(v) {
   if (v === null || v === undefined || Number.isNaN(v)) return '—';
@@ -29,25 +43,38 @@ function formatDate(ts) {
 }
 
 export default function BacktestPanel() {
+  const [strategy, setStrategy] = useState('confluence');
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setIntervalValue] = useState('4h');
   const [status, setStatus] = useState('idle'); // idle | loading | done | error
   const [errorMessage, setErrorMessage] = useState(null);
   const [output, setOutput] = useState(null); // { trades, equityCurve, stats }
 
+  const selectStrategy = (value) => {
+    setStrategy(value);
+    setIntervalValue(BACKTEST_INTERVALS[value][0].value);
+    setOutput(null);
+    setStatus('idle');
+  };
+
   const runTest = async () => {
     try {
       setStatus('loading');
       setErrorMessage(null);
-      const url = `${BINANCE_KLINES}?symbol=${symbol}&interval=${interval}&limit=1000`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Binance a répondu ${res.status}`);
-      const raw = await res.json();
 
-      const closes = raw.map((k) => parseFloat(k[4]));
+      const intervalConfig = BACKTEST_INTERVALS[strategy].find((it) => it.value === interval);
+      const requests = intervalConfig?.requests || 1;
+
+      const raw = await fetchHistoricalKlines(symbol, interval, requests);
+
       const times = raw.map((k) => k[0]);
+      const opens = raw.map((k) => parseFloat(k[1]));
+      const closes = raw.map((k) => parseFloat(k[4]));
+      const volumes = raw.map((k) => parseFloat(k[5]));
 
-      const result = runBacktest(closes, times);
+      const result =
+        strategy === 'climax' ? runVolumeClimaxBacktest(opens, closes, times, volumes) : runBacktest(closes, times);
+
       if (result.error) {
         setStatus('error');
         setErrorMessage(result.error);
@@ -74,11 +101,22 @@ export default function BacktestPanel() {
       </div>
 
       <p className="muted-note">
-        Rejoue la logique de confluence (SMA 9/21 · RSI 14 · MACD) sur des données Binance passées et
-        calcule le résultat réel qu'elle aurait donné — pas une estimation.
+        Rejoue une stratégie sur des données Binance passées et calcule le résultat réel qu'elle aurait
+        donné — pas une estimation.
       </p>
 
       <div className="backtest-controls">
+        <div className="backtest-field">
+          <span className="eyebrow">Stratégie</span>
+          <div className="interval-buttons">
+            {STRATEGIES.map((s) => (
+              <button key={s.value} className={s.value === strategy ? 'active' : ''} onClick={() => selectStrategy(s.value)}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="backtest-field">
           <span className="eyebrow">Actif</span>
           <div className="interval-buttons">
@@ -93,7 +131,7 @@ export default function BacktestPanel() {
         <div className="backtest-field">
           <span className="eyebrow">Intervalle</span>
           <div className="interval-buttons">
-            {BACKTEST_INTERVALS.map((it) => (
+            {BACKTEST_INTERVALS[strategy].map((it) => (
               <button key={it.value} className={it.value === interval ? 'active' : ''} onClick={() => setIntervalValue(it.value)}>
                 {it.label}
               </button>
@@ -102,9 +140,16 @@ export default function BacktestPanel() {
         </div>
 
         <button className="run-backtest-btn" onClick={runTest} disabled={status === 'loading'}>
-          {status === 'loading' ? 'Calcul en cours…' : 'Lancer le backtest'}
+          {status === 'loading' ? 'Récupération de l\'historique…' : 'Lancer le backtest'}
         </button>
       </div>
+
+      {status === 'loading' && (
+        <p className="muted-note">
+          Les petits timeframes nécessitent plusieurs requêtes enchaînées pour couvrir assez
+          d'historique — ça peut prendre quelques secondes de plus.
+        </p>
+      )}
 
       {status === 'error' && <div className="error-banner">Erreur : {errorMessage}</div>}
 
@@ -167,7 +212,7 @@ export default function BacktestPanel() {
               </ResponsiveContainer>
               <p className="chart-caption">
                 Évolution d'un capital de départ fictif de 100, en suivant uniquement les signaux ACHAT/VENTE de la
-                confluence. Sert à visualiser la régularité, pas à prédire l'avenir.
+                stratégie choisie. Sert à visualiser la régularité, pas à prédire l'avenir.
               </p>
             </div>
           )}

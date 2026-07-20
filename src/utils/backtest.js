@@ -1,58 +1,39 @@
 // utils/backtest.js
-// Rejoue la logique de confluence (SMA/RSI/MACD) sur un historique de prix,
-// simule les trades qui en auraient résulté, et calcule des statistiques
-// réelles de performance — pas une estimation.
+// Moteur de simulation générique : rejoue N'IMPORTE QUELLE fonction de
+// signal sur un historique de prix, simule les trades qui en auraient
+// résulté, et calcule des statistiques réelles de performance.
+// Utilisé à la fois par la stratégie de confluence (tendance) et par la
+// stratégie de retournement par volume (scalping).
 
 import { computeSignal } from './indicators.js';
+import { computeVolumeClimaxSignal } from './volumeClimax.js';
 
-const WARMUP = 35; // nb de bougies nécessaires avant que MACD/SMA21 soient calculables
+const CONFLUENCE_WARMUP = 35; // nb de bougies nécessaires avant que MACD/SMA21 soient calculables
+const CLIMAX_WARMUP = 30;
 
 /**
- * @param {number[]} closes prix de clôture, du plus ancien au plus récent
- * @param {number[]} times timestamps (ms) alignés avec closes
- * @returns {{
- *   trades: Array<{entryTime:number, exitTime:number, entryPrice:number, exitPrice:number, returnPct:number, direction:string}>,
- *   equityCurve: Array<{time:number, equity:number}>,
- *   stats: {totalTrades:number, winRate:number, avgReturnPct:number, avgWinPct:number, avgLossPct:number, maxDrawdownPct:number, finalReturnPct:number}
- * }}
+ * Moteur générique : à chaque pas de temps, interroge `computeSignalAt(i)`
+ * qui doit retourner { signal: 'ACHAT'|'VENTE'|'NEUTRE' } ou null.
  */
-/**
- * @param {number[]} closes prix de clôture, du plus ancien au plus récent
- * @param {number[]} times timestamps (ms) alignés avec closes
- * @param {number[]} [volumes] volumes alignés avec closes (active le vote Volume)
- * @param {number[]} [highs] plus hauts alignés avec closes (active le vote Pivots)
- * @param {number[]} [lows] plus bas alignés avec closes (active le vote Pivots)
- * @returns {{
- *   trades: Array<{entryTime:number, exitTime:number, entryPrice:number, exitPrice:number, returnPct:number, direction:string}>,
- *   equityCurve: Array<{time:number, equity:number}>,
- *   stats: {totalTrades:number, winRate:number, avgReturnPct:number, avgWinPct:number, avgLossPct:number, maxDrawdownPct:number, finalReturnPct:number}
- * }}
- */
-export function runBacktest(closes, times, volumes = null, highs = null, lows = null) {
-  if (closes.length < WARMUP + 10) {
+function simulateStrategy(times, closes, computeSignalAt, warmup) {
+  if (closes.length < warmup + 10) {
     return { trades: [], equityCurve: [], stats: null, error: 'Pas assez de données pour ce backtest.' };
   }
 
   const trades = [];
-  let position = null; // { direction: 'ACHAT', entryPrice, entryTime }
+  let position = null;
   let lastSignal = 'NEUTRE';
 
-  for (let i = WARMUP; i < closes.length; i++) {
-    const windowCloses = closes.slice(0, i + 1);
-    const windowVolumes = volumes ? volumes.slice(0, i + 1) : null;
-    const windowHighs = highs ? highs.slice(0, i + 1) : null;
-    const windowLows = lows ? lows.slice(0, i + 1) : null;
-    const result = computeSignal(windowCloses, windowVolumes, windowHighs, windowLows);
+  for (let i = warmup; i < closes.length; i++) {
+    const result = computeSignalAt(i);
     if (!result) continue;
 
     const { signal } = result;
     const price = closes[i];
     const time = times[i];
 
-    // Un signal ACHAT ouvre une position longue si on n'en a pas déjà une.
     if (signal === 'ACHAT' && signal !== lastSignal) {
       if (position && position.direction === 'VENTE') {
-        // on clôture la position courte avant d'ouvrir la longue
         trades.push(closeTrade(position, price, time));
         position = null;
       }
@@ -61,8 +42,6 @@ export function runBacktest(closes, times, volumes = null, highs = null, lows = 
       }
     }
 
-    // Un signal VENTE clôture une position longue (on ne simule pas le short ici,
-    // on considère VENTE comme "sortir du marché").
     if (signal === 'VENTE' && signal !== lastSignal) {
       if (position && position.direction === 'ACHAT') {
         trades.push(closeTrade(position, price, time));
@@ -73,15 +52,58 @@ export function runBacktest(closes, times, volumes = null, highs = null, lows = 
     lastSignal = signal;
   }
 
-  // Position encore ouverte à la fin : on la clôture au dernier prix connu pour ne pas la perdre des stats
   if (position) {
     trades.push(closeTrade(position, closes[closes.length - 1], times[times.length - 1]));
   }
 
-  const equityCurve = buildEquityCurve(trades, times[WARMUP]);
+  const equityCurve = buildEquityCurve(trades, times[warmup]);
   const stats = computeStats(trades, equityCurve);
 
   return { trades, equityCurve, stats };
+}
+
+/**
+ * Backtest de la stratégie de confluence (tendance) : SMA/RSI/MACD/Volume/Pivots.
+ * @param {number[]} closes
+ * @param {number[]} times
+ * @param {number[]} [volumes]
+ * @param {number[]} [highs]
+ * @param {number[]} [lows]
+ */
+export function runBacktest(closes, times, volumes = null, highs = null, lows = null) {
+  return simulateStrategy(
+    times,
+    closes,
+    (i) => {
+      const windowCloses = closes.slice(0, i + 1);
+      const windowVolumes = volumes ? volumes.slice(0, i + 1) : null;
+      const windowHighs = highs ? highs.slice(0, i + 1) : null;
+      const windowLows = lows ? lows.slice(0, i + 1) : null;
+      return computeSignal(windowCloses, windowVolumes, windowHighs, windowLows);
+    },
+    CONFLUENCE_WARMUP
+  );
+}
+
+/**
+ * Backtest de la stratégie de retournement par pic de volume (scalping).
+ * @param {number[]} opens
+ * @param {number[]} closes
+ * @param {number[]} times
+ * @param {number[]} volumes
+ */
+export function runVolumeClimaxBacktest(opens, closes, times, volumes) {
+  return simulateStrategy(
+    times,
+    closes,
+    (i) => {
+      const windowOpens = opens.slice(0, i + 1);
+      const windowCloses = closes.slice(0, i + 1);
+      const windowVolumes = volumes.slice(0, i + 1);
+      return computeVolumeClimaxSignal(windowOpens, windowCloses, windowVolumes);
+    },
+    CLIMAX_WARMUP
+  );
 }
 
 function closeTrade(position, exitPrice, exitTime) {
@@ -97,7 +119,7 @@ function closeTrade(position, exitPrice, exitTime) {
 }
 
 function buildEquityCurve(trades, startTime) {
-  let equity = 100; // base 100, en pourcentage cumulé
+  let equity = 100;
   const curve = [{ time: startTime, equity }];
   for (const t of trades) {
     equity = equity * (1 + t.returnPct / 100);
@@ -126,7 +148,6 @@ function computeStats(trades, equityCurve) {
   const avgWinPct = wins.length ? wins.reduce((a, t) => a + t.returnPct, 0) / wins.length : 0;
   const avgLossPct = losses.length ? losses.reduce((a, t) => a + t.returnPct, 0) / losses.length : 0;
 
-  // Max drawdown sur la courbe d'équité
   let peak = equityCurve[0].equity;
   let maxDrawdownPct = 0;
   for (const point of equityCurve) {
