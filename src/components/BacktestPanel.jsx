@@ -15,7 +15,8 @@ const STRATEGIES = [
 ];
 
 // `requests` = nombre de requêtes de 1000 bougies enchaînées (pagination)
-// pour dépasser la limite Binance sur les petits timeframes.
+// pour dépasser la limite Binance sur les petits timeframes. Augmenté pour
+// obtenir un nombre de trades statistiquement exploitable (30-50 minimum).
 const BACKTEST_INTERVALS = {
   confluence: [
     { value: '1m', label: '1 min (~7 jours)', requests: 10 },
@@ -26,9 +27,9 @@ const BACKTEST_INTERVALS = {
     { value: '1d', label: '1 jour (~2,7 ans)', requests: 1 }
   ],
   climax: [
-    { value: '1m', label: '1 min (~16 h)', requests: 1 },
-    { value: '5m', label: '5 min (~3,5 jours)', requests: 1 },
-    { value: '15m', label: '15 min (~10 jours)', requests: 1 }
+    { value: '1m', label: '1 min (~3,5 jours)', requests: 5 },
+    { value: '5m', label: '5 min (~17 jours)', requests: 5 },
+    { value: '15m', label: '15 min (~52 jours)', requests: 5 }
   ]
 };
 
