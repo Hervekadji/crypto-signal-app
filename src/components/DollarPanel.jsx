@@ -1,5 +1,7 @@
 import React from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useDollarIndex } from '../hooks/useDollarIndex.js';
+import { useDollarHistory } from '../hooks/useDollarHistory.js';
 
 const CURRENCY_LABELS = { EUR: 'Euro', JPY: 'Yen', GBP: 'Livre', CAD: 'Dollar CA', CHF: 'Franc CH' };
 
@@ -19,8 +21,14 @@ function formatTime(d) {
   return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatChartDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+}
+
 export default function DollarPanel({ notifsEnabled }) {
   const { result, alerts, status, errorMessage, refresh } = useDollarIndex(15 * 60 * 1000, notifsEnabled);
+  const { series, status: historyStatus, errorMessage: historyError } = useDollarHistory(21);
 
   return (
     <div className="panel">
@@ -59,30 +67,61 @@ export default function DollarPanel({ notifsEnabled }) {
               >
                 {result.direction === 'hausse' ? 'HAUSSE' : result.direction === 'baisse' ? 'BAISSE' : 'STABLE'}
               </div>
-
-              <p className="climax-reason">
-                Corrélation historique inverse avec le Bitcoin — un dollar fort coïncide souvent avec
-                une pression baissière sur les cryptos, et inversement. Ce n'est pas systématique, juste
-                une tendance statistique à surveiller.
-              </p>
-
-              <div className="indicators">
-                {Object.entries(result.byCurrency).map(([ccy, change]) => (
-                  <div className="indicator-row" key={ccy}>
-                    <span className="indicator-label">
-                      USD/{ccy} ({CURRENCY_LABELS[ccy]})
-                    </span>
-                    <span className="indicator-value">{formatPct(change)}</span>
-                  </div>
-                ))}
-              </div>
             </>
           )}
 
+          <p className="climax-reason">
+            Corrélation historique inverse avec le Bitcoin — un dollar fort coïncide souvent avec
+            une pression baissière sur les cryptos, et inversement. Ce n'est pas systématique, juste
+            une tendance statistique à surveiller.
+          </p>
+
+          {historyStatus === 'ok' && series.length > 1 && (
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={series} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid stroke="#223049" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={formatChartDate}
+                    stroke="#7c8aa5"
+                    fontSize={10}
+                    tick={{ fill: '#7c8aa5' }}
+                    minTickGap={30}
+                  />
+                  <YAxis stroke="#7c8aa5" fontSize={10} tick={{ fill: '#7c8aa5' }} domain={['auto', 'auto']} />
+                  <Tooltip
+                    contentStyle={{ background: '#121b2e', border: '1px solid #223049', borderRadius: 8 }}
+                    labelFormatter={formatChartDate}
+                    formatter={(value) => [value.toFixed(3), 'Indice (base 100)']}
+                  />
+                  <Line type="monotone" dataKey="composite" stroke="#d4a24c" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+              <p className="chart-caption">Indice composite sur ~21 jours, rebasé à 100 au premier jour disponible.</p>
+            </div>
+          )}
+          {historyStatus === 'error' && (
+            <div className="muted-note">Courbe historique indisponible : {historyError}</div>
+          )}
+          {historyStatus === 'loading' && <div className="muted-note">Chargement de la courbe historique…</div>}
+
+          {Object.keys(result.byCurrency || {}).length > 0 && (
+            <div className="indicators">
+              {Object.entries(result.byCurrency).map(([ccy, change]) => (
+                <div className="indicator-row" key={ccy}>
+                  <span className="indicator-label">
+                    USD/{ccy} ({CURRENCY_LABELS[ccy]})
+                  </span>
+                  <span className="indicator-value">{formatPct(change)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <p className="muted-note">
-            Approximation façon DXY (EUR/JPY/GBP/CAD/CHF pondérés), basée sur les taux de référence
-            de la Banque Centrale Européenne. Comparaison entre lectures successives (pas de date
-            historique fixe), rafraîchie toutes les 15 minutes.
+            Approximation façon DXY (EUR/JPY/GBP/CAD/CHF pondérés), mise à jour quotidiennement — pas
+            un indice ICE officiel en temps réel.
           </p>
         </>
       )}

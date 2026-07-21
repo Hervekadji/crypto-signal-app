@@ -40,3 +40,25 @@ export function computeDollarIndexChange(ratesToday, ratesYesterday) {
 
   return { compositeChangePct, byCurrency, direction };
 }
+
+/**
+ * Construit une série temporelle de l'indice composite, rebasée à 100 au
+ * premier jour disponible — pour afficher une courbe d'évolution, pas
+ * seulement une lecture instantanée.
+ * @param {Array<{date:string, rates:Record<string,number>}>} dailyRates trié du plus ancien au plus récent
+ */
+export function buildCompositeSeries(dailyRates) {
+  if (dailyRates.length === 0) return [];
+  const base = dailyRates[0].rates;
+
+  return dailyRates.map(({ date, rates }) => {
+    let composite = 0;
+    let weightUsed = 0;
+    for (const ccy of DOLLAR_BASKET_CURRENCIES) {
+      if (!rates[ccy] || !base[ccy]) continue;
+      composite += (rates[ccy] / base[ccy]) * 100 * DOLLAR_BASKET_WEIGHTS[ccy];
+      weightUsed += DOLLAR_BASKET_WEIGHTS[ccy];
+    }
+    return { date, composite: weightUsed > 0 ? composite / weightUsed : 100 };
+  });
+}
