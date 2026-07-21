@@ -39,39 +39,50 @@ export default function DollarPanel({ notifsEnabled }) {
 
       {result && (
         <>
-          <div className="price-block">
-            <span className="price-value" style={{ color: directionColor(result.direction) }}>
-              {formatPct(result.compositeChangePct)}
-            </span>
-            <span className="price-currency">vs hier</span>
-          </div>
-
-          <div
-            className="signal-badge"
-            style={{ borderColor: directionColor(result.direction), color: directionColor(result.direction) }}
-          >
-            {result.direction === 'hausse' ? 'HAUSSE' : result.direction === 'baisse' ? 'BAISSE' : 'STABLE'}
-          </div>
-
-          <p className="climax-reason">
-            Corrélation historique inverse avec le Bitcoin — un dollar fort coïncide souvent avec une
-            pression baissière sur les cryptos, et inversement. Ce n'est pas systématique, juste une
-            tendance statistique à surveiller.
-          </p>
-
-          <div className="indicators">
-            {Object.entries(result.byCurrency).map(([ccy, change]) => (
-              <div className="indicator-row" key={ccy}>
-                <span className="indicator-label">USD/{ccy} ({CURRENCY_LABELS[ccy]})</span>
-                <span className="indicator-value">{formatPct(change)}</span>
+          {Object.keys(result.byCurrency).length === 0 ? (
+            <div className="muted-note">
+              Première lecture effectuée — la direction (hausse/baisse) apparaîtra au prochain
+              rafraîchissement, une fois qu'il y a deux points à comparer.
+            </div>
+          ) : (
+            <>
+              <div className="price-block">
+                <span className="price-value" style={{ color: directionColor(result.direction) }}>
+                  {formatPct(result.compositeChangePct)}
+                </span>
+                <span className="price-currency">vs lecture précédente</span>
               </div>
-            ))}
-          </div>
+
+              <div
+                className="signal-badge"
+                style={{ borderColor: directionColor(result.direction), color: directionColor(result.direction) }}
+              >
+                {result.direction === 'hausse' ? 'HAUSSE' : result.direction === 'baisse' ? 'BAISSE' : 'STABLE'}
+              </div>
+
+              <p className="climax-reason">
+                Corrélation historique inverse avec le Bitcoin — un dollar fort coïncide souvent avec
+                une pression baissière sur les cryptos, et inversement. Ce n'est pas systématique, juste
+                une tendance statistique à surveiller.
+              </p>
+
+              <div className="indicators">
+                {Object.entries(result.byCurrency).map(([ccy, change]) => (
+                  <div className="indicator-row" key={ccy}>
+                    <span className="indicator-label">
+                      USD/{ccy} ({CURRENCY_LABELS[ccy]})
+                    </span>
+                    <span className="indicator-value">{formatPct(change)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <p className="muted-note">
             Approximation façon DXY (EUR/JPY/GBP/CAD/CHF pondérés), basée sur les taux de référence
-            quotidiens de la Banque Centrale Européenne — pas l'indice ICE officiel, et mis à jour une
-            fois par jour ouvré, pas en continu.
+            de la Banque Centrale Européenne. Comparaison entre lectures successives (pas de date
+            historique fixe), rafraîchie toutes les 15 minutes.
           </p>
         </>
       )}

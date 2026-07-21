@@ -3,15 +3,12 @@ import { computeDollarIndexChange, DOLLAR_BASKET_CURRENCIES } from '../utils/dol
 
 const FRANKFURTER = 'https://api.frankfurter.app';
 
-function formatDate(d) {
-  return d.toISOString().split('T')[0];
-}
-
 /**
- * Récupère les taux de change USD->panier (EUR, JPY, GBP, CAD, CHF) du jour
- * et de la veille (données ECB via Frankfurter, mises à jour ~16h CET les
- * jours ouvrés), calcule un indice dollar composite pondéré, et notifie sur
- * changement de direction (hausse/baisse) si activé.
+ * Récupère uniquement les taux USD->panier ACTUELS (une seule requête, pas
+ * de date historique — plus robuste, moins de surface d'échec) et compare
+ * chaque nouvelle lecture à la précédente pour déterminer la direction.
+ * La toute première lecture sert de référence, sans direction affichée
+ * tant qu'on n'a pas un deuxième point de comparaison.
  *
  * @param {number} pollMs
  * @param {boolean} notifsEnabled
@@ -21,6 +18,7 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
   const [alerts, setAlerts] = useState([]);
   const [status, setStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState(null);
+  const previousRatesRef = useRef(null);
   const lastDirectionRef = useRef(null);
   const notifsEnabledRef = useRef(notifsEnabled);
   notifsEnabledRef.current = notifsEnabled;
@@ -30,23 +28,23 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
       setStatus('loading');
 
       const symbols = DOLLAR_BASKET_CURRENCIES.join(',');
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = formatDate(yesterday);
+      const res = await fetch(`${FRANKFURTER}/latest?from=USD&to=${symbols}`);
+      if (!res.ok) throw new Error(`Frankfurter a répondu ${res.status}`);
+      const data = await res.json();
 
-      const [todayRes, yesterdayRes] = await Promise.all([
-        fetch(`${FRANKFURTER}/latest?from=USD&to=${symbols}`),
-        fetch(`${FRANKFURTER}/${yesterdayStr}?from=USD&to=${symbols}`)
-      ]);
+      if (!data.rates) throw new Error('Réponse inattendue de Frankfurter');
 
-      if (!todayRes.ok || !yesterdayRes.ok) throw new Error('Frankfurter API indisponible');
+      if (!previousRatesRef.current) {
+        // Première lecture : on la garde comme référence, pas encore de direction.
+        previousRatesRef.current = data.rates;
+        setResult({ compositeChangePct: 0, byCurrency: {}, direction: 'stable', rates: data.rates });
+        setStatus('ok');
+        setErrorMessage(null);
+        return;
+      }
 
-      const todayData = await todayRes.json();
-      const yesterdayData = await yesterdayRes.json();
-
-      const computed = computeDollarIndexChange(todayData.rates, yesterdayData.rates);
-
-      setResult(computed);
+      const computed = computeDollarIndexChange(data.rates, previousRatesRef.current);
+      setResult({ ...computed, rates: data.rates });
       setStatus('ok');
       setErrorMessage(null);
 
@@ -60,7 +58,7 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
         Notification.permission === 'granted'
       ) {
         new Notification(`Dollar en ${computed.direction}`, {
-          body: `Variation composite : ${computed.compositeChangePct > 0 ? '+' : ''}${computed.compositeChangePct.toFixed(2)}%`,
+          body: `Variation composite : ${computed.compositeChangePct > 0 ? '+' : ''}${computed.compositeChangePct.toFixed(3)}%`,
           tag: 'dollar-index'
         });
       }
@@ -79,6 +77,9 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
         );
         lastDirectionRef.current = computed.direction;
       }
+
+      // On garde toujours la lecture la plus récente comme prochaine référence.
+      previousRatesRef.current = data.rates;
     } catch (err) {
       setStatus('error');
       setErrorMessage(err.message || 'Erreur réseau');
@@ -86,6 +87,7 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
   }, []);
 
   useEffect(() => {
+    previousRatesRef.current = null;
     lastDirectionRef.current = null;
     fetchAndCompute();
     const id = setInterval(fetchAndCompute, pollMs);
