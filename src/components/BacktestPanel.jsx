@@ -33,6 +33,13 @@ const BACKTEST_INTERVALS = {
   ]
 };
 
+const STOP_LOSS_OPTIONS = [
+  { value: null, label: 'Aucun' },
+  { value: 1, label: '-1%' },
+  { value: 2, label: '-2%' },
+  { value: 3, label: '-3%' },
+  { value: 5, label: '-5%' }
+];
 function formatPct(v) {
   if (v === null || v === undefined || Number.isNaN(v)) return '—';
   const sign = v > 0 ? '+' : '';
@@ -50,6 +57,7 @@ export default function BacktestPanel() {
   const [status, setStatus] = useState('idle'); // idle | loading | done | error
   const [errorMessage, setErrorMessage] = useState(null);
   const [output, setOutput] = useState(null); // { trades, equityCurve, stats }
+  const [stopLossPct, setStopLossPct] = useState(null);
 
   const selectStrategy = (value) => {
     setStrategy(value);
@@ -70,11 +78,15 @@ export default function BacktestPanel() {
 
       const times = raw.map((k) => k[0]);
       const opens = raw.map((k) => parseFloat(k[1]));
+      const highs = raw.map((k) => parseFloat(k[2]));
+      const lows = raw.map((k) => parseFloat(k[3]));
       const closes = raw.map((k) => parseFloat(k[4]));
       const volumes = raw.map((k) => parseFloat(k[5]));
 
       const result =
-        strategy === 'climax' ? runVolumeClimaxBacktest(opens, closes, times, volumes) : runBacktest(closes, times);
+        strategy === 'climax'
+          ? runVolumeClimaxBacktest(opens, closes, times, volumes, highs, lows, stopLossPct)
+          : runBacktest(closes, times, volumes, highs, lows, stopLossPct);
 
       if (result.error) {
         setStatus('error');
@@ -140,6 +152,21 @@ export default function BacktestPanel() {
           </div>
         </div>
 
+        <div className="backtest-field">
+          <span className="eyebrow">Stop-loss</span>
+          <div className="interval-buttons">
+            {STOP_LOSS_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                className={opt.value === stopLossPct ? 'active' : ''}
+                onClick={() => setStopLossPct(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button className="run-backtest-btn" onClick={runTest} disabled={status === 'loading'}>
           {status === 'loading' ? 'Récupération de l\'historique…' : 'Lancer le backtest'}
         </button>
@@ -181,6 +208,12 @@ export default function BacktestPanel() {
                 {formatPct(stats.finalReturnPct)}
               </span>
             </div>
+            {stopLossPct && (
+              <div className="stat">
+                <span className="stat-label">Trades stoppés (-{stopLossPct}%)</span>
+                <span className="stat-value">{stats.stoppedOutCount} / {stats.totalTrades}</span>
+              </div>
+            )}
           </div>
 
           {stats.totalTrades === 0 && (

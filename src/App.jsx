@@ -4,6 +4,8 @@ import BacktestPanel from './components/BacktestPanel.jsx';
 import NewsPanel from './components/NewsPanel.jsx';
 import NotificationToggle from './components/NotificationToggle.jsx';
 import ScalpTab from './components/ScalpTab.jsx';
+import DollarPanel from './components/DollarPanel.jsx';
+import CandlestickChart from './components/CandlestickChart.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
@@ -75,7 +77,7 @@ function IndicatorRow({ label, value, vote }) {
   );
 }
 
-function PairPanel({ label, price, result, alerts, status, errorMessage, refresh }) {
+function PairPanel({ label, symbol, interval, showChart, price, result, alerts, status, errorMessage, refresh }) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -92,6 +94,8 @@ function PairPanel({ label, price, result, alerts, status, errorMessage, refresh
         <span className="price-value">{formatPrice(price)}</span>
         <span className="price-currency">USDT</span>
       </div>
+
+      {showChart && <CandlestickChart symbol={symbol} interval={interval} />}
 
       {status === 'error' && <div className="error-banner">Erreur : {errorMessage}</div>}
       {status === 'loading' && !result && <div className="muted-note">Chargement des données…</div>}
@@ -170,6 +174,7 @@ export default function App() {
   const [notifsEnabled, setNotifsEnabled] = useState(false);
   const [scalpInterval, setScalpInterval] = useState('5m');
   const [scalpNotifsEnabled, setScalpNotifsEnabled] = useState(false);
+  const [showCandles, setShowCandles] = useState(false);
 
   // On instancie un hook indépendant par paire pour le bandeau défilant du haut.
   const btc = useCryptoSignals('BTCUSDT', interval, 30000, notifsEnabled);
@@ -231,6 +236,12 @@ export default function App() {
 
           {tab === 'live' && <NotificationToggle enabled={notifsEnabled} onToggle={setNotifsEnabled} />}
 
+          {tab === 'live' && (
+            <button className="notif-btn" data-active={showCandles} onClick={() => setShowCandles(!showCandles)}>
+              {showCandles ? 'Bougies japonaises ✓' : 'Afficher en bougies japonaises'}
+            </button>
+          )}
+
           {tab === 'scalp' && (
             <div className="interval-select">
               <span className="eyebrow">Intervalle</span>
@@ -261,9 +272,16 @@ export default function App() {
 
       {tab === 'live' ? (
         <main className="grid">
-          <PairPanel label="BTC/USDT" {...btc} />
-          <PairPanel label="ETH/USDT" {...eth} />
-          <PairPanel label="Or (PAXG/USDT)" {...gold} />
+          <PairPanel label="BTC/USDT" symbol="BTCUSDT" interval={interval} showChart={showCandles} {...btc} />
+          <PairPanel label="ETH/USDT" symbol="ETHUSDT" interval={interval} showChart={showCandles} {...eth} />
+          <PairPanel
+            label="Or (PAXG/USDT)"
+            symbol="PAXGUSDT"
+            interval={interval}
+            showChart={showCandles}
+            {...gold}
+          />
+          <DollarPanel notifsEnabled={notifsEnabled} />
         </main>
       ) : tab === 'backtest' ? (
         <main className="grid grid-single">

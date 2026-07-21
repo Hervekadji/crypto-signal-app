@@ -4,6 +4,9 @@
 // résulté, et calcule des statistiques réelles de performance.
 // Utilisé à la fois par la stratégie de confluence (tendance) et par la
 // stratégie de retournement par volume (scalping).
+// Supporte un stop-loss optionnel, vérifié bougie par bougie via les plus
+// hauts/plus bas réels (pas seulement les clôtures) — pour refléter ce
+// qu'un vrai stop-loss aurait déclenché intra-bougie.
 
 import { computeSignal } from './indicators.js';
 import { computeVolumeClimaxSignal } from './volumeClimax.js';
@@ -12,10 +15,18 @@ const CONFLUENCE_WARMUP = 35; // nb de bougies nécessaires avant que MACD/SMA21
 const CLIMAX_WARMUP = 30;
 
 /**
- * Moteur générique : à chaque pas de temps, interroge `computeSignalAt(i)`
- * qui doit retourner { signal: 'ACHAT'|'VENTE'|'NEUTRE' } ou null.
+ * @param {number[]} times
+ * @param {number[]} closes
+ * @param {(i:number) => {signal:string}|null} computeSignalAt
+ * @param {number} warmup
+ * @param {object} [options]
+ * @param {number[]} [options.highs] nécessaire si stopLossPct est défini
+ * @param {number[]} [options.lows] nécessaire si stopLossPct est défini
+ * @param {number} [options.stopLossPct] ex: 2 pour un stop à -2% du prix d'entrée
  */
-function simulateStrategy(times, closes, computeSignalAt, warmup) {
+function simulateStrategy(times, closes, computeSignalAt, warmup, options = {}) {
+  const { highs = null, lows = null, stopLossPct = null } = options;
+
   if (closes.length < warmup + 10) {
     return { trades: [], equityCurve: [], stats: null, error: 'Pas assez de données pour ce backtest.' };
   }
@@ -25,16 +36,37 @@ function simulateStrategy(times, closes, computeSignalAt, warmup) {
   let lastSignal = 'NEUTRE';
 
   for (let i = warmup; i < closes.length; i++) {
+    const time = times[i];
+
+    // 1) Vérifier d'abord si le stop-loss est touché sur cette bougie,
+    //    AVANT de recalculer le signal — un stop est une sortie de risque,
+    //    pas une décision stratégique.
+    if (position && stopLossPct && highs && lows) {
+      const stopPrice =
+        position.direction === 'ACHAT'
+          ? position.entryPrice * (1 - stopLossPct / 100)
+          : position.entryPrice * (1 + stopLossPct / 100);
+
+      const hitStop =
+        position.direction === 'ACHAT' ? lows[i] <= stopPrice : highs[i] >= stopPrice;
+
+      if (hitStop) {
+        trades.push(closeTrade(position, stopPrice, time, 'stop-loss'));
+        position = null;
+        lastSignal = 'NEUTRE'; // on se remet en état neutre, prêt à réagir au prochain vrai signal
+        continue; // on ne rouvre pas de position sur la même bougie que le stop
+      }
+    }
+
     const result = computeSignalAt(i);
     if (!result) continue;
 
     const { signal } = result;
     const price = closes[i];
-    const time = times[i];
 
     if (signal === 'ACHAT' && signal !== lastSignal) {
       if (position && position.direction === 'VENTE') {
-        trades.push(closeTrade(position, price, time));
+        trades.push(closeTrade(position, price, time, 'signal'));
         position = null;
       }
       if (!position) {
@@ -44,7 +76,7 @@ function simulateStrategy(times, closes, computeSignalAt, warmup) {
 
     if (signal === 'VENTE' && signal !== lastSignal) {
       if (position && position.direction === 'ACHAT') {
-        trades.push(closeTrade(position, price, time));
+        trades.push(closeTrade(position, price, time, 'signal'));
         position = null;
       }
     }
@@ -53,7 +85,7 @@ function simulateStrategy(times, closes, computeSignalAt, warmup) {
   }
 
   if (position) {
-    trades.push(closeTrade(position, closes[closes.length - 1], times[times.length - 1]));
+    trades.push(closeTrade(position, closes[closes.length - 1], times[times.length - 1], 'fin-periode'));
   }
 
   const equityCurve = buildEquityCurve(trades, times[warmup]);
@@ -69,8 +101,9 @@ function simulateStrategy(times, closes, computeSignalAt, warmup) {
  * @param {number[]} [volumes]
  * @param {number[]} [highs]
  * @param {number[]} [lows]
+ * @param {number} [stopLossPct] optionnel, ex: 2 pour -2%
  */
-export function runBacktest(closes, times, volumes = null, highs = null, lows = null) {
+export function runBacktest(closes, times, volumes = null, highs = null, lows = null, stopLossPct = null) {
   return simulateStrategy(
     times,
     closes,
@@ -81,7 +114,8 @@ export function runBacktest(closes, times, volumes = null, highs = null, lows = 
       const windowLows = lows ? lows.slice(0, i + 1) : null;
       return computeSignal(windowCloses, windowVolumes, windowHighs, windowLows);
     },
-    CONFLUENCE_WARMUP
+    CONFLUENCE_WARMUP,
+    { highs, lows, stopLossPct }
   );
 }
 
@@ -91,8 +125,11 @@ export function runBacktest(closes, times, volumes = null, highs = null, lows = 
  * @param {number[]} closes
  * @param {number[]} times
  * @param {number[]} volumes
+ * @param {number[]} [highs]
+ * @param {number[]} [lows]
+ * @param {number} [stopLossPct]
  */
-export function runVolumeClimaxBacktest(opens, closes, times, volumes) {
+export function runVolumeClimaxBacktest(opens, closes, times, volumes, highs = null, lows = null, stopLossPct = null) {
   return simulateStrategy(
     times,
     closes,
@@ -102,11 +139,12 @@ export function runVolumeClimaxBacktest(opens, closes, times, volumes) {
       const windowVolumes = volumes.slice(0, i + 1);
       return computeVolumeClimaxSignal(windowOpens, windowCloses, windowVolumes);
     },
-    CLIMAX_WARMUP
+    CLIMAX_WARMUP,
+    { highs, lows, stopLossPct }
   );
 }
 
-function closeTrade(position, exitPrice, exitTime) {
+function closeTrade(position, exitPrice, exitTime, reason = 'signal') {
   const returnPct = ((exitPrice - position.entryPrice) / position.entryPrice) * 100;
   return {
     direction: position.direction,
@@ -114,7 +152,8 @@ function closeTrade(position, exitPrice, exitTime) {
     entryPrice: position.entryPrice,
     exitTime,
     exitPrice,
-    returnPct
+    returnPct,
+    reason
   };
 }
 
@@ -137,12 +176,14 @@ function computeStats(trades, equityCurve) {
       avgWinPct: 0,
       avgLossPct: 0,
       maxDrawdownPct: 0,
-      finalReturnPct: 0
+      finalReturnPct: 0,
+      stoppedOutCount: 0
     };
   }
 
   const wins = trades.filter((t) => t.returnPct > 0);
   const losses = trades.filter((t) => t.returnPct <= 0);
+  const stoppedOutCount = trades.filter((t) => t.reason === 'stop-loss').length;
 
   const avgReturnPct = trades.reduce((a, t) => a + t.returnPct, 0) / trades.length;
   const avgWinPct = wins.length ? wins.reduce((a, t) => a + t.returnPct, 0) / wins.length : 0;
@@ -166,6 +207,7 @@ function computeStats(trades, equityCurve) {
     avgWinPct,
     avgLossPct,
     maxDrawdownPct,
-    finalReturnPct
+    finalReturnPct,
+    stoppedOutCount
   };
 }
