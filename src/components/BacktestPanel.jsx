@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { runBacktest, runVolumeClimaxBacktest } from '../utils/backtest.js';
+import { runBacktest, runVolumeClimaxBacktest, runChecklistBacktest } from '../utils/backtest.js';
 import { fetchHistoricalKlines } from '../utils/binanceHistory.js';
 
 const BACKTEST_PAIRS = [
@@ -11,12 +11,12 @@ const BACKTEST_PAIRS = [
 
 const STRATEGIES = [
   { value: 'confluence', label: 'Confluence (tendance)' },
-  { value: 'climax', label: 'Retournement volume (scalping)' }
+  { value: 'climax', label: 'Retournement volume (scalping)' },
+  { value: 'checklist', label: 'Check-list (volume+RSI+confirmation)' }
 ];
 
 // `requests` = nombre de requêtes de 1000 bougies enchaînées (pagination)
-// pour dépasser la limite Binance sur les petits timeframes. Augmenté pour
-// obtenir un nombre de trades statistiquement exploitable (30-50 minimum).
+// pour dépasser la limite Binance sur les petits timeframes.
 const BACKTEST_INTERVALS = {
   confluence: [
     { value: '1m', label: '1 min (~7 jours)', requests: 10 },
@@ -30,6 +30,11 @@ const BACKTEST_INTERVALS = {
     { value: '1m', label: '1 min (~3,5 jours)', requests: 5 },
     { value: '5m', label: '5 min (~17 jours)', requests: 5 },
     { value: '15m', label: '15 min (~52 jours)', requests: 5 }
+  ],
+  checklist: [
+    { value: '1m', label: '1 min (~3,5 jours)', requests: 5 },
+    { value: '5m', label: '5 min (~17 jours)', requests: 5 },
+    { value: '15m', label: '15 min (~52 jours)', requests: 5 }
   ]
 };
 
@@ -40,6 +45,18 @@ const STOP_LOSS_OPTIONS = [
   { value: 3, label: '-3%' },
   { value: 5, label: '-5%' }
 ];
+
+const RSI_PRESETS = [
+  { value: 'strict', label: 'RSI 75/20 (strict)', overbought: 75, oversold: 20 },
+  { value: 'loose', label: 'RSI 70/30 (+ de trades)', overbought: 70, oversold: 30 }
+];
+
+const CONFIRMATION_OPTIONS = [
+  { value: 1, label: '1 bougie (immédiat)' },
+  { value: 2, label: '2 bougies' },
+  { value: 3, label: '3 bougies (check-list)' }
+];
+
 function formatPct(v) {
   if (v === null || v === undefined || Number.isNaN(v)) return '—';
   const sign = v > 0 ? '+' : '';
@@ -58,6 +75,9 @@ export default function BacktestPanel() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [output, setOutput] = useState(null); // { trades, equityCurve, stats }
   const [stopLossPct, setStopLossPct] = useState(null);
+  const [rsiPreset, setRsiPreset] = useState('strict');
+  const [confirmationCandles, setConfirmationCandles] = useState(3);
+  const [useTimeFilter, setUseTimeFilter] = useState(true);
 
   const selectStrategy = (value) => {
     setStrategy(value);
@@ -83,10 +103,23 @@ export default function BacktestPanel() {
       const closes = raw.map((k) => parseFloat(k[4]));
       const volumes = raw.map((k) => parseFloat(k[5]));
 
-      const result =
-        strategy === 'climax'
-          ? runVolumeClimaxBacktest(opens, closes, times, volumes, highs, lows, stopLossPct)
-          : runBacktest(closes, times, volumes, highs, lows, stopLossPct);
+      let result;
+      if (strategy === 'climax') {
+        result = runVolumeClimaxBacktest(opens, closes, times, volumes, highs, lows, stopLossPct);
+      } else if (strategy === 'checklist') {
+        const preset = RSI_PRESETS.find((p) => p.value === rsiPreset);
+        result = runChecklistBacktest(opens, closes, times, volumes, {
+          rsiOversold: preset.oversold,
+          rsiOverbought: preset.overbought,
+          confirmationCandles,
+          useTimeFilter,
+          highs,
+          lows,
+          stopLossPct
+        });
+      } else {
+        result = runBacktest(closes, times, volumes, highs, lows, stopLossPct);
+      }
 
       if (result.error) {
         setStatus('error');
@@ -152,6 +185,48 @@ export default function BacktestPanel() {
           </div>
         </div>
 
+        {strategy === 'checklist' && (
+          <>
+            <div className="backtest-field">
+              <span className="eyebrow">Seuils RSI</span>
+              <div className="interval-buttons">
+                {RSI_PRESETS.map((p) => (
+                  <button key={p.value} className={p.value === rsiPreset ? 'active' : ''} onClick={() => setRsiPreset(p.value)}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="backtest-field">
+              <span className="eyebrow">Confirmation</span>
+              <div className="interval-buttons">
+                {CONFIRMATION_OPTIONS.map((c) => (
+                  <button
+                    key={c.value}
+                    className={c.value === confirmationCandles ? 'active' : ''}
+                    onClick={() => setConfirmationCandles(c.value)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="backtest-field">
+              <span className="eyebrow">Filtre horaire</span>
+              <div className="interval-buttons">
+                <button className={useTimeFilter ? 'active' : ''} onClick={() => setUseTimeFilter(true)}>
+                  8h-22h Yaoundé
+                </button>
+                <button className={!useTimeFilter ? 'active' : ''} onClick={() => setUseTimeFilter(false)}>
+                  24h/24
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
         <div className="backtest-field">
           <span className="eyebrow">Stop-loss</span>
           <div className="interval-buttons">
@@ -214,11 +289,25 @@ export default function BacktestPanel() {
                 <span className="stat-value">{stats.stoppedOutCount} / {stats.totalTrades}</span>
               </div>
             )}
+            {stats.totalTrades > 0 && (
+              <div className="stat">
+                <span className="stat-label">Profit Factor</span>
+                <span className="stat-value">
+                  {(() => {
+                    const grossWin = stats.avgWinPct * stats.totalTrades * (stats.winRate / 100);
+                    const grossLoss = Math.abs(stats.avgLossPct) * stats.totalTrades * (1 - stats.winRate / 100);
+                    const pf = grossLoss > 0 ? grossWin / grossLoss : null;
+                    return pf ? pf.toFixed(2) : '—';
+                  })()}
+                </span>
+              </div>
+            )}
           </div>
 
           {stats.totalTrades === 0 && (
             <div className="muted-note">
-              Aucun signal ACHAT/VENTE déclenché sur cette période — essaie un autre intervalle.
+              Aucun signal ACHAT/VENTE déclenché sur cette période — essaie un autre intervalle, ou
+              relâche les seuils RSI/la confirmation si tu es sur la check-list.
             </div>
           )}
 

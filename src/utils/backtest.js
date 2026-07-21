@@ -144,6 +144,70 @@ export function runVolumeClimaxBacktest(opens, closes, times, volumes, highs = n
   );
 }
 
+/**
+ * Convertit un timestamp UTC en heure locale de Yaoundé (UTC+1, sans heure d'été).
+ */
+function yaoundeHour(timestampMs) {
+  return (new Date(timestampMs).getUTCHours() + 1) % 24;
+}
+
+/**
+ * Backtest de la check-list de trading : retournement par volume, avec
+ * confirmation sur plusieurs bougies consécutives et filtre horaire Yaoundé.
+ * @param {number[]} opens
+ * @param {number[]} closes
+ * @param {number[]} times
+ * @param {number[]} volumes
+ * @param {object} [options]
+ * @param {number} [options.rsiOversold=20]
+ * @param {number} [options.rsiOverbought=75]
+ * @param {number} [options.confirmationCandles=3]
+ * @param {boolean} [options.useTimeFilter=true] limite les entrées à 8h-22h Yaoundé
+ * @param {number[]} [options.highs]
+ * @param {number[]} [options.lows]
+ * @param {number} [options.stopLossPct]
+ */
+export function runChecklistBacktest(opens, closes, times, volumes, options = {}) {
+  const {
+    rsiOversold = 20,
+    rsiOverbought = 75,
+    confirmationCandles = 3,
+    useTimeFilter = true,
+    highs = null,
+    lows = null,
+    stopLossPct = null
+  } = options;
+
+  return simulateStrategy(
+    times,
+    closes,
+    (i) => {
+      if (useTimeFilter) {
+        const hour = yaoundeHour(times[i]);
+        if (hour < 8 || hour >= 22) return { signal: 'NEUTRE' };
+      }
+
+      if (i - confirmationCandles + 1 < CLIMAX_WARMUP) return { signal: 'NEUTRE' };
+
+      let confirmedDirection = null;
+      for (let k = i - confirmationCandles + 1; k <= i; k++) {
+        const raw = computeVolumeClimaxSignal(
+          opens.slice(0, k + 1),
+          closes.slice(0, k + 1),
+          volumes.slice(0, k + 1),
+          { rsiOversold, rsiOverbought }
+        );
+        if (!raw || raw.signal === 'NEUTRE') return { signal: 'NEUTRE' };
+        if (confirmedDirection === null) confirmedDirection = raw.signal;
+        else if (raw.signal !== confirmedDirection) return { signal: 'NEUTRE' };
+      }
+
+      return { signal: confirmedDirection };
+    },
+    CLIMAX_WARMUP + confirmationCandles,
+    { highs, lows, stopLossPct }
+  );
+}
 function closeTrade(position, exitPrice, exitTime, reason = 'signal') {
   const returnPct = ((exitPrice - position.entryPrice) / position.entryPrice) * 100;
   return {

@@ -29,7 +29,8 @@ export function useCandleSeries(symbol, interval = '5m', limit = 60, pollMs = 30
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),
-        close: parseFloat(k[4])
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5])
       }));
 
       setCandles(mapped);
