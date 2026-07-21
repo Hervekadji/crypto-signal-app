@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeDollarIndexChange, DOLLAR_BASKET_CURRENCIES } from '../utils/dollarIndex.js';
 
-const FRANKFURTER = 'https://api.frankfurter.app';
+// Servi via jsDelivr, un CDN public conçu pour être appelé directement
+// depuis un navigateur (CORS ouvert par nature) — plus fiable que les API
+// "classiques" qui peuvent bloquer les requêtes cross-origin.
+const CURRENCY_API = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
+// Miroir de secours si jsDelivr est indisponible dans certaines régions.
+const CURRENCY_API_FALLBACK = 'https://latest.currency-api.pages.dev/v1/currencies/usd.json';
 
 /**
- * Récupère uniquement les taux USD->panier ACTUELS (une seule requête, pas
- * de date historique — plus robuste, moins de surface d'échec) et compare
+ * Récupère les taux USD->panier ACTUELS (une seule requête) et compare
  * chaque nouvelle lecture à la précédente pour déterminer la direction.
  * La toute première lecture sert de référence, sans direction affichée
  * tant qu'on n'a pas un deuxième point de comparaison.
@@ -23,28 +27,41 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
   const notifsEnabledRef = useRef(notifsEnabled);
   notifsEnabledRef.current = notifsEnabled;
 
+  const fetchRates = useCallback(async () => {
+    let res;
+    try {
+      res = await fetch(CURRENCY_API);
+      if (!res.ok) throw new Error('primary failed');
+    } catch {
+      res = await fetch(CURRENCY_API_FALLBACK);
+    }
+    if (!res.ok) throw new Error(`Source de données indisponible (${res.status})`);
+    const data = await res.json();
+    if (!data.usd) throw new Error('Réponse inattendue');
+
+    // Les codes devises reviennent en minuscules dans cette API.
+    const rates = {};
+    for (const ccy of DOLLAR_BASKET_CURRENCIES) {
+      rates[ccy] = data.usd[ccy.toLowerCase()];
+    }
+    return rates;
+  }, []);
+
   const fetchAndCompute = useCallback(async () => {
     try {
       setStatus('loading');
-
-      const symbols = DOLLAR_BASKET_CURRENCIES.join(',');
-      const res = await fetch(`${FRANKFURTER}/latest?from=USD&to=${symbols}`);
-      if (!res.ok) throw new Error(`Frankfurter a répondu ${res.status}`);
-      const data = await res.json();
-
-      if (!data.rates) throw new Error('Réponse inattendue de Frankfurter');
+      const rates = await fetchRates();
 
       if (!previousRatesRef.current) {
-        // Première lecture : on la garde comme référence, pas encore de direction.
-        previousRatesRef.current = data.rates;
-        setResult({ compositeChangePct: 0, byCurrency: {}, direction: 'stable', rates: data.rates });
+        previousRatesRef.current = rates;
+        setResult({ compositeChangePct: 0, byCurrency: {}, direction: 'stable', rates });
         setStatus('ok');
         setErrorMessage(null);
         return;
       }
 
-      const computed = computeDollarIndexChange(data.rates, previousRatesRef.current);
-      setResult({ ...computed, rates: data.rates });
+      const computed = computeDollarIndexChange(rates, previousRatesRef.current);
+      setResult({ ...computed, rates });
       setStatus('ok');
       setErrorMessage(null);
 
@@ -66,25 +83,19 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
       if (computed.direction !== lastDirectionRef.current) {
         setAlerts((prev) =>
           [
-            {
-              id: `${Date.now()}-dxy`,
-              direction: computed.direction,
-              changePct: computed.compositeChangePct,
-              time: new Date()
-            },
+            { id: `${Date.now()}-dxy`, direction: computed.direction, changePct: computed.compositeChangePct, time: new Date() },
             ...prev
           ].slice(0, 50)
         );
         lastDirectionRef.current = computed.direction;
       }
 
-      // On garde toujours la lecture la plus récente comme prochaine référence.
-      previousRatesRef.current = data.rates;
+      previousRatesRef.current = rates;
     } catch (err) {
       setStatus('error');
       setErrorMessage(err.message || 'Erreur réseau');
     }
-  }, []);
+  }, [fetchRates]);
 
   useEffect(() => {
     previousRatesRef.current = null;
