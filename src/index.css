@@ -486,6 +486,18 @@ body {
   background: rgba(255, 255, 255, 0.01);
 }
 
+.candlestick-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chart-scroll-hint {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+  margin: 4px 0 0;
+}
+
 /* --- Filtre timeframe supérieur --- */
 .filter-note {
   background: rgba(212, 162, 76, 0.1);

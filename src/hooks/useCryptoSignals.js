@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { computeSignal } from '../utils/indicators.js';
 import { HIGHER_TIMEFRAME_MAP, higherTimeframeTrend, applyHigherTimeframeFilter } from '../utils/higherTimeframe.js';
+import { showNotification } from '../utils/notify.js';
 
 const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
 
@@ -92,14 +93,8 @@ export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000, notifs
 
         // Notification navigateur, seulement pour un vrai signal ACHAT/VENTE
         // (pas pour le retour à NEUTRE, pour ne pas spammer)
-        if (
-          notifsEnabledRef.current &&
-          signalResult.signal !== 'NEUTRE' &&
-          typeof window !== 'undefined' &&
-          'Notification' in window &&
-          Notification.permission === 'granted'
-        ) {
-          new Notification(`${signalResult.signal} — ${symbol}`, {
+        if (notifsEnabledRef.current && signalResult.signal !== 'NEUTRE') {
+          showNotification(`${signalResult.signal} — ${symbol}`, {
             body: `Prix : ${lastClose.toLocaleString('fr-FR', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2

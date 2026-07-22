@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { classifyNews, NEWS_CATEGORIES } from '../utils/newsKeywords.js';
+import { showNotification } from '../utils/notify.js';
 
 // Conversion RSS → JSON gratuite, pensée pour un usage côté navigateur (CORS ouvert).
 const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url=';
@@ -69,15 +70,10 @@ export function useMarketNews(pollMs = 5 * 60 * 1000, notifsEnabled = false) {
           (item) => item.categories.length > 0 && !seenIdsRef.current.has(item.id)
         );
 
-        if (
-          freshImpactful.length > 0 &&
-          typeof window !== 'undefined' &&
-          'Notification' in window &&
-          Notification.permission === 'granted'
-        ) {
+        if (freshImpactful.length > 0) {
           const first = freshImpactful[0];
           const categoryLabels = first.categories.map((c) => NEWS_CATEGORIES[c].label).join(', ');
-          new Notification(`Actu marché — ${categoryLabels}`, {
+          showNotification(`Actu marché — ${categoryLabels}`, {
             body: first.title,
             tag: `news-${first.id}`
           });

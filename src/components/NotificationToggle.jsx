@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { showNotification } from '../utils/notify.js';
 
 /**
  * Bouton générique d'activation des notifications navigateur, avec un
@@ -24,7 +25,7 @@ export default function NotificationToggle({ enabled, onToggle, labelOn = 'Notif
 
   const sendTestNotification = () => {
     if (permission !== 'granted') return;
-    new Notification('Test de notification', {
+    showNotification('Test de notification', {
       body: "Si tu vois ceci, le mécanisme fonctionne — le souci vient d'ailleurs (signal pas encore changé, ou onglet mis en pause par Android).",
       tag: 'test-notification'
     });

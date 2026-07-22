@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { computeVolumeClimaxSignal } from '../utils/volumeClimax.js';
+import { showNotification } from '../utils/notify.js';
 
 const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
 
@@ -57,14 +58,8 @@ export function useVolumeClimax(symbol, interval = '5m', pollMs = 20000, notifsE
           ...prev
         ].slice(0, 50));
 
-        if (
-          notifsEnabledRef.current &&
-          signalResult.signal !== 'NEUTRE' &&
-          typeof window !== 'undefined' &&
-          'Notification' in window &&
-          Notification.permission === 'granted'
-        ) {
-          new Notification(`Retournement — ${signalResult.signal} ${symbol}`, {
+        if (notifsEnabledRef.current && signalResult.signal !== 'NEUTRE') {
+          showNotification(`Retournement — ${signalResult.signal} ${symbol}`, {
             body: signalResult.reason || '',
             tag: `climax-${symbol}`
           });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeDollarIndexChange, DOLLAR_BASKET_CURRENCIES } from '../utils/dollarIndex.js';
+import { showNotification } from '../utils/notify.js';
 
 // Servi via jsDelivr, un CDN public conçu pour être appelé directement
 // depuis un navigateur (CORS ouvert par nature) — plus fiable que les API
@@ -69,12 +70,9 @@ export function useDollarIndex(pollMs = 15 * 60 * 1000, notifsEnabled = false) {
         lastDirectionRef.current &&
         computed.direction !== lastDirectionRef.current &&
         computed.direction !== 'stable' &&
-        notifsEnabledRef.current &&
-        typeof window !== 'undefined' &&
-        'Notification' in window &&
-        Notification.permission === 'granted'
+        notifsEnabledRef.current
       ) {
-        new Notification(`Dollar en ${computed.direction}`, {
+        showNotification(`Dollar en ${computed.direction}`, {
           body: `Variation composite : ${computed.compositeChangePct > 0 ? '+' : ''}${computed.compositeChangePct.toFixed(3)}%`,
           tag: 'dollar-index'
         });
