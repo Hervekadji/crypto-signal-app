@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 
 /**
- * Bouton générique d'activation des notifications navigateur.
- * Réutilisé à la fois pour les alertes de signal (prix) et les alertes
- * d'actualités à impact détecté.
+ * Bouton générique d'activation des notifications navigateur, avec un
+ * bouton de test séparé pour vérifier le mécanisme indépendamment de tout
+ * vrai signal (utile pour diagnostiquer : est-ce que les notifications
+ * marchent du tout, ou juste qu'aucun signal n'a encore changé ?).
  */
 export default function NotificationToggle({ enabled, onToggle, labelOn = 'Notifications activées ✓', labelOff = 'Activer les notifications' }) {
   const [permission, setPermission] = useState(
@@ -21,19 +22,34 @@ export default function NotificationToggle({ enabled, onToggle, labelOn = 'Notif
     if (result === 'granted') onToggle(true);
   };
 
+  const sendTestNotification = () => {
+    if (permission !== 'granted') return;
+    new Notification('Test de notification', {
+      body: "Si tu vois ceci, le mécanisme fonctionne — le souci vient d'ailleurs (signal pas encore changé, ou onglet mis en pause par Android).",
+      tag: 'test-notification'
+    });
+  };
+
   let label = labelOff;
   if (permission === 'unsupported') label = 'Notifications non supportées';
   else if (permission === 'denied') label = 'Notifications bloquées par le navigateur';
   else if (permission === 'granted') label = enabled ? labelOn : 'Notifications en pause';
 
   return (
-    <button
-      className="notif-btn"
-      onClick={handleClick}
-      disabled={permission === 'unsupported' || permission === 'denied'}
-      data-active={permission === 'granted' && enabled}
-    >
-      {label}
-    </button>
+    <div className="notif-toggle-group">
+      <button
+        className="notif-btn"
+        onClick={handleClick}
+        disabled={permission === 'unsupported' || permission === 'denied'}
+        data-active={permission === 'granted' && enabled}
+      >
+        {label}
+      </button>
+      {permission === 'granted' && (
+        <button className="notif-test-btn" onClick={sendTestNotification}>
+          Tester
+        </button>
+      )}
+    </div>
   );
 }

@@ -95,23 +95,32 @@ function simulateStrategy(times, closes, computeSignalAt, warmup, options = {}) 
 }
 
 /**
- * Backtest de la stratégie de confluence (tendance) : SMA/RSI/MACD/Volume/Pivots.
+ * Backtest de la stratégie de confluence (tendance) : SMA/RSI/MACD, avec
+ * Volume et Pivots optionnels (activés par défaut, désactivables pour
+ * comparer directement les deux versions — utile car Volume/Pivots sont
+ * des indicateurs plus réactifs qui peuvent générer plus de faux signaux
+ * sur de grands timeframes comme 1 jour).
  * @param {number[]} closes
  * @param {number[]} times
  * @param {number[]} [volumes]
  * @param {number[]} [highs]
  * @param {number[]} [lows]
  * @param {number} [stopLossPct] optionnel, ex: 2 pour -2%
+ * @param {boolean} [useExtendedVotes=true] si false, ignore Volume/Pivots (3 votes seulement)
  */
-export function runBacktest(closes, times, volumes = null, highs = null, lows = null, stopLossPct = null) {
+export function runBacktest(closes, times, volumes = null, highs = null, lows = null, stopLossPct = null, useExtendedVotes = true) {
+  const effectiveVolumes = useExtendedVotes ? volumes : null;
+  const effectiveHighs = useExtendedVotes ? highs : null;
+  const effectiveLows = useExtendedVotes ? lows : null;
+
   return simulateStrategy(
     times,
     closes,
     (i) => {
       const windowCloses = closes.slice(0, i + 1);
-      const windowVolumes = volumes ? volumes.slice(0, i + 1) : null;
-      const windowHighs = highs ? highs.slice(0, i + 1) : null;
-      const windowLows = lows ? lows.slice(0, i + 1) : null;
+      const windowVolumes = effectiveVolumes ? effectiveVolumes.slice(0, i + 1) : null;
+      const windowHighs = effectiveHighs ? effectiveHighs.slice(0, i + 1) : null;
+      const windowLows = effectiveLows ? effectiveLows.slice(0, i + 1) : null;
       return computeSignal(windowCloses, windowVolumes, windowHighs, windowLows);
     },
     CONFLUENCE_WARMUP,

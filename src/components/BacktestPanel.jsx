@@ -78,6 +78,7 @@ export default function BacktestPanel() {
   const [rsiPreset, setRsiPreset] = useState('strict');
   const [confirmationCandles, setConfirmationCandles] = useState(3);
   const [useTimeFilter, setUseTimeFilter] = useState(true);
+  const [useExtendedVotes, setUseExtendedVotes] = useState(true);
 
   const selectStrategy = (value) => {
     setStrategy(value);
@@ -118,7 +119,7 @@ export default function BacktestPanel() {
           stopLossPct
         });
       } else {
-        result = runBacktest(closes, times, volumes, highs, lows, stopLossPct);
+        result = runBacktest(closes, times, volumes, highs, lows, stopLossPct, useExtendedVotes);
       }
 
       if (result.error) {
@@ -184,6 +185,20 @@ export default function BacktestPanel() {
             ))}
           </div>
         </div>
+
+        {strategy === 'confluence' && (
+          <div className="backtest-field">
+            <span className="eyebrow">Indicateurs</span>
+            <div className="interval-buttons">
+              <button className={useExtendedVotes ? 'active' : ''} onClick={() => setUseExtendedVotes(true)}>
+                5 votes (+ Volume + Pivots)
+              </button>
+              <button className={!useExtendedVotes ? 'active' : ''} onClick={() => setUseExtendedVotes(false)}>
+                3 votes (SMA/RSI/MACD)
+              </button>
+            </div>
+          </div>
+        )}
 
         {strategy === 'checklist' && (
           <>
