@@ -6,6 +6,7 @@ import NotificationToggle from './components/NotificationToggle.jsx';
 import ScalpTab from './components/ScalpTab.jsx';
 import DollarPanel from './components/DollarPanel.jsx';
 import CandlestickChart from './components/CandlestickChart.jsx';
+import JournalPanel from './components/JournalPanel.jsx';
 
 const INTERVALS = [
   { value: '1m', label: '1 min' },
@@ -215,6 +216,9 @@ export default function App() {
             <button className={tab === 'scalp' ? 'active' : ''} onClick={() => setTab('scalp')}>
               Scalping
             </button>
+            <button className={tab === 'journal' ? 'active' : ''} onClick={() => setTab('journal')}>
+              Journal
+            </button>
           </div>
 
           {tab === 'live' && (
@@ -291,8 +295,12 @@ export default function App() {
         <main className="grid grid-single">
           <NewsPanel />
         </main>
-      ) : (
+      ) : tab === 'scalp' ? (
         <ScalpTab interval={scalpInterval} notifsEnabled={scalpNotifsEnabled} />
+      ) : (
+        <main className="grid grid-single">
+          <JournalPanel />
+        </main>
       )}
 
       <footer className="app-footer">

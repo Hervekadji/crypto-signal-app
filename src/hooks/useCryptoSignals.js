@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { computeSignal } from '../utils/indicators.js';
 import { HIGHER_TIMEFRAME_MAP, higherTimeframeTrend, applyHigherTimeframeFilter } from '../utils/higherTimeframe.js';
 import { showNotification } from '../utils/notify.js';
+import { addJournalEntry } from '../utils/journalStorage.js';
 
 const BINANCE_KLINES = 'https://api.binance.com/api/v3/klines';
 
@@ -93,14 +94,23 @@ export function useCryptoSignals(symbol, interval = '5m', pollMs = 30000, notifs
 
         // Notification navigateur, seulement pour un vrai signal ACHAT/VENTE
         // (pas pour le retour à NEUTRE, pour ne pas spammer)
-        if (notifsEnabledRef.current && signalResult.signal !== 'NEUTRE') {
-          showNotification(`${signalResult.signal} — ${symbol}`, {
-            body: `Prix : ${lastClose.toLocaleString('fr-FR', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })} USDT · score ${signalResult.score}`,
-            tag: symbol
+        if (signalResult.signal !== 'NEUTRE') {
+          addJournalEntry({
+            symbol,
+            strategy: 'confluence',
+            direction: signalResult.signal,
+            entryPrice: lastClose
           });
+
+          if (notifsEnabledRef.current) {
+            showNotification(`${signalResult.signal} — ${symbol}`, {
+              body: `Prix : ${lastClose.toLocaleString('fr-FR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })} USDT · score ${signalResult.score}`,
+              tag: symbol
+            });
+          }
         }
 
         lastSignalRef.current = signalResult.signal;

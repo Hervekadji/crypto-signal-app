@@ -479,6 +479,62 @@ body {
   line-height: 1.4;
 }
 
+.journal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.journal-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.journal-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.journal-symbol {
+  font-weight: 600;
+}
+
+.journal-strategy {
+  color: var(--muted);
+}
+
+.journal-direction {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.journal-item-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.journal-detail {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.journal-change {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+}
+
 .candlestick-wrap {
   border: 1px solid var(--border);
   border-radius: 8px;
