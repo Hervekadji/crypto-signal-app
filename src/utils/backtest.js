@@ -9,7 +9,7 @@
 // qu'un vrai stop-loss aurait déclenché intra-bougie.
 
 import { computeSignal } from './indicators.js';
-import { computeVolumeClimaxSignal } from './volumeClimax.js';
+import { computeVolumeClimaxSignal, computeVolumeRsiOnlySignal } from './volumeClimax.js';
 
 const CONFLUENCE_WARMUP = 35; // nb de bougies nécessaires avant que MACD/SMA21 soient calculables
 const CLIMAX_WARMUP = 30;
@@ -147,6 +147,35 @@ export function runVolumeClimaxBacktest(opens, closes, times, volumes, highs = n
       const windowCloses = closes.slice(0, i + 1);
       const windowVolumes = volumes.slice(0, i + 1);
       return computeVolumeClimaxSignal(windowOpens, windowCloses, windowVolumes);
+    },
+    CLIMAX_WARMUP,
+    { highs, lows, stopLossPct }
+  );
+}
+
+/**
+ * Backtest de la version "pure" Volume+RSI seuls (sans position dans le
+ * range) — pour comparer objectivement contre la version complète.
+ * @param {number[]} closes
+ * @param {number[]} times
+ * @param {number[]} volumes
+ * @param {object} [options]
+ * @param {number} [options.rsiOversold=20]
+ * @param {number} [options.rsiOverbought=75]
+ * @param {number[]} [options.highs]
+ * @param {number[]} [options.lows]
+ * @param {number} [options.stopLossPct]
+ */
+export function runVolumeRsiOnlyBacktest(closes, times, volumes, options = {}) {
+  const { rsiOversold = 20, rsiOverbought = 75, highs = null, lows = null, stopLossPct = null } = options;
+
+  return simulateStrategy(
+    times,
+    closes,
+    (i) => {
+      const windowCloses = closes.slice(0, i + 1);
+      const windowVolumes = volumes.slice(0, i + 1);
+      return computeVolumeRsiOnlySignal(windowCloses, windowVolumes, { rsiOversold, rsiOverbought });
     },
     CLIMAX_WARMUP,
     { highs, lows, stopLossPct }

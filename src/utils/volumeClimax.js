@@ -10,14 +10,44 @@
 import { rsi } from './indicators.js';
 
 /**
- * @param {number[]} opens
- * @param {number[]} closes
- * @param {number[]} volumes
- * @param {object} [options]
- * @param {number} [options.lookback=10] nombre de bougies pour définir le range local et le volume moyen
- * @param {number} [options.volumeMultiplier=2] seuil de pic de volume (x fois la moyenne)
- * @param {number} [options.rsiOversold=25]
- * @param {number} [options.rsiOverbought=75]
+ * Version "pure" : Volume + RSI seuls, SANS la condition de position dans
+ * le range (contrairement à computeVolumeClimaxSignal). Sert à mesurer
+ * objectivement, par backtest, si Volume+RSI seuls suffisent ou si la
+ * position dans le range apporte vraiment quelque chose.
+ */
+export function computeVolumeRsiOnlySignal(closes, volumes, options = {}) {
+  const { lookback = 10, volumeMultiplier = 2, rsiOversold = 20, rsiOverbought = 75 } = options;
+
+  if (closes.length < lookback + 15) return null;
+
+  const n = closes.length - 1;
+  const lastVolume = volumes[n];
+  const recentVolumes = volumes.slice(n - lookback, n);
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+  const isVolumeSpike = lastVolume > avgVolume * volumeMultiplier;
+
+  const rsiValue = rsi(closes, 14);
+
+  let signal = 'NEUTRE';
+  let reason = null;
+
+  if (isVolumeSpike && rsiValue !== null && rsiValue < rsiOversold) {
+    signal = 'ACHAT';
+    reason = 'Pic de volume + RSI survendu (sans filtre de position dans le range)';
+  } else if (isVolumeSpike && rsiValue !== null && rsiValue > rsiOverbought) {
+    signal = 'VENTE';
+    reason = 'Pic de volume + RSI suracheté (sans filtre de position dans le range)';
+  }
+
+  return {
+    signal,
+    reason,
+    details: { lastVolume, avgVolume, volumeRatio: avgVolume > 0 ? lastVolume / avgVolume : 0, isVolumeSpike, rsi: rsiValue }
+  };
+}
+
+/**
+ * Détection de retournement par pic de volume (volume climax) — stratégie scalping distincte de la confluence
  */
 export function computeVolumeClimaxSignal(opens, closes, volumes, options = {}) {
   const { lookback = 10, volumeMultiplier = 2, rsiOversold = 25, rsiOverbought = 75 } = options;

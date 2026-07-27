@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { runBacktest, runVolumeClimaxBacktest, runChecklistBacktest } from '../utils/backtest.js';
+import { runBacktest, runVolumeClimaxBacktest, runChecklistBacktest, runVolumeRsiOnlyBacktest } from '../utils/backtest.js';
 import { fetchHistoricalKlines } from '../utils/binanceHistory.js';
 
 const BACKTEST_PAIRS = [
@@ -12,6 +12,7 @@ const BACKTEST_PAIRS = [
 const STRATEGIES = [
   { value: 'confluence', label: 'Confluence (tendance)' },
   { value: 'climax', label: 'Retournement volume (scalping)' },
+  { value: 'volumeRsiOnly', label: 'Volume + RSI seuls (sans range)' },
   { value: 'checklist', label: 'Check-list (volume+RSI+confirmation)' }
 ];
 
@@ -27,6 +28,11 @@ const BACKTEST_INTERVALS = {
     { value: '1d', label: '1 jour (~2,7 ans)', requests: 1 }
   ],
   climax: [
+    { value: '1m', label: '1 min (~3,5 jours)', requests: 5 },
+    { value: '5m', label: '5 min (~17 jours)', requests: 5 },
+    { value: '15m', label: '15 min (~52 jours)', requests: 5 }
+  ],
+  volumeRsiOnly: [
     { value: '1m', label: '1 min (~3,5 jours)', requests: 5 },
     { value: '5m', label: '5 min (~17 jours)', requests: 5 },
     { value: '15m', label: '15 min (~52 jours)', requests: 5 }
@@ -107,6 +113,15 @@ export default function BacktestPanel() {
       let result;
       if (strategy === 'climax') {
         result = runVolumeClimaxBacktest(opens, closes, times, volumes, highs, lows, stopLossPct);
+      } else if (strategy === 'volumeRsiOnly') {
+        const preset = RSI_PRESETS.find((p) => p.value === rsiPreset);
+        result = runVolumeRsiOnlyBacktest(closes, times, volumes, {
+          rsiOversold: preset.oversold,
+          rsiOverbought: preset.overbought,
+          highs,
+          lows,
+          stopLossPct
+        });
       } else if (strategy === 'checklist') {
         const preset = RSI_PRESETS.find((p) => p.value === rsiPreset);
         result = runChecklistBacktest(opens, closes, times, volumes, {
@@ -200,19 +215,21 @@ export default function BacktestPanel() {
           </div>
         )}
 
+        {(strategy === 'checklist' || strategy === 'volumeRsiOnly') && (
+          <div className="backtest-field">
+            <span className="eyebrow">Seuils RSI</span>
+            <div className="interval-buttons">
+              {RSI_PRESETS.map((p) => (
+                <button key={p.value} className={p.value === rsiPreset ? 'active' : ''} onClick={() => setRsiPreset(p.value)}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {strategy === 'checklist' && (
           <>
-            <div className="backtest-field">
-              <span className="eyebrow">Seuils RSI</span>
-              <div className="interval-buttons">
-                {RSI_PRESETS.map((p) => (
-                  <button key={p.value} className={p.value === rsiPreset ? 'active' : ''} onClick={() => setRsiPreset(p.value)}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="backtest-field">
               <span className="eyebrow">Confirmation</span>
               <div className="interval-buttons">
